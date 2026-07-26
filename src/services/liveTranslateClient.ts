@@ -1,3 +1,5 @@
+import { getOrCreateAudioPipeline } from "../lib/audioPipeline";
+
 export interface LiveTranslateTurn {
   id?: string;
   originalText: string;
@@ -426,31 +428,22 @@ export class LiveTranslateClient {
         audioElement.crossOrigin = "anonymous";
       }
 
-      if (!this.micContext) {
-        this.micContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
+      const { ctx, sourceNode } = getOrCreateAudioPipeline(audioElement);
+      this.micContext = ctx;
+      this.sourceNode = sourceNode;
 
       if (this.micContext.state === "suspended") {
         await this.micContext.resume();
       }
 
-      if (!this.sourceNode) {
-        this.sourceNode = this.micContext.createMediaElementSource(audioElement);
-        this.radioGainNode = this.micContext.createGain();
-        this.radioGainNode.gain.value = 1.0;
-        
-        this.sourceNode.connect(this.radioGainNode);
-        this.radioGainNode.connect(this.micContext.destination);
-
-        // Auto-resume global AudioContext when the audio element plays to prevent silent playback
-        const autoResume = () => {
-          if (globalMicContext && globalMicContext.state === "suspended") {
-            globalMicContext.resume().catch((err) => console.warn("[Web Audio Auto-Resume] Failed to resume AudioContext:", err));
-          }
-        };
-        audioElement.addEventListener("play", autoResume);
-        audioElement.addEventListener("playing", autoResume);
-      }
+      // Auto-resume global AudioContext when the audio element plays to prevent silent playback
+      const autoResume = () => {
+        if (this.micContext && this.micContext.state === "suspended") {
+          this.micContext.resume().catch((err) => console.warn("[Web Audio Auto-Resume] Failed to resume AudioContext:", err));
+        }
+      };
+      audioElement.addEventListener("play", autoResume);
+      audioElement.addEventListener("playing", autoResume);
 
       if (!this.micProcessor) {
         this.micProcessor = this.micContext.createScriptProcessor(4096, 1, 1);

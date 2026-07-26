@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { RadioStation } from "../types";
 import { Play, Pause, Volume2, VolumeX, ShieldAlert, BadgeInfo, Disc3, Radio } from "lucide-react";
 import Hls from "hls.js";
+import { getOrCreateAudioPipeline } from "../lib/audioPipeline";
 
 interface AudioPlayerProps {
   station: RadioStation | null;
@@ -34,28 +35,23 @@ export default function AudioPlayer({ station, isPlaying, setIsPlaying }: AudioP
 
     const setupAudioAnalyser = async () => {
       try {
-        if (!audioContextRef.current) {
-          const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-          if (AudioCtx) {
-            audioContextRef.current = new AudioCtx();
-          }
-        }
+        const { ctx, sourceNode } = getOrCreateAudioPipeline(audioRef.current!);
 
-        const ctx = audioContextRef.current;
-        if (ctx && ctx.state === "suspended") {
+        if (ctx.state === "suspended") {
           await ctx.resume();
         }
 
-        if (ctx && !sourceNodeRef.current && audioRef.current) {
-          const source = ctx.createMediaElementSource(audioRef.current);
+        audioContextRef.current = ctx;
+        sourceNodeRef.current = sourceNode;
+
+        if (!analyserRef.current) {
           const analyser = ctx.createAnalyser();
           analyser.fftSize = 64; // 32 frequency bins
           analyser.smoothingTimeConstant = 0.8;
 
-          source.connect(analyser);
+          sourceNode.connect(analyser);
           analyser.connect(ctx.destination);
 
-          sourceNodeRef.current = source;
           analyserRef.current = analyser;
         }
       } catch (err) {
@@ -171,7 +167,6 @@ export default function AudioPlayer({ station, isPlaying, setIsPlaying }: AudioP
       try {
         audioRef.current.pause();
         audioRef.current.removeAttribute("src");
-        audioRef.current.load();
       } catch (e) {}
       setIsPlaying(false);
       setLoading(false);
@@ -217,8 +212,19 @@ export default function AudioPlayer({ station, isPlaying, setIsPlaying }: AudioP
           if (isHls) {
             if (audioRef.current.canPlayType("application/vnd.apple.mpegurl")) {
               // Safari / Apple native HLS support
-              audioRef.current.src = targetUrl;
+              audioRef.current.src = proxiedUrl;
               audioRef.current.load();
+              try {
+                const p = audioRef.current.play();
+                playPromiseRef.current = p;
+                await p;
+                if (!isCancelled) {
+                  setLoading(false);
+                  setStreamError(null);
+                }
+              } catch (e: any) {
+                if (!isCancelled && e.name !== "AbortError") setErrorState();
+              }
             } else if (Hls.isSupported()) {
               // Chrome / Firefox / Opera Hls.js fallback
               const hls = new Hls({
@@ -230,11 +236,10 @@ export default function AudioPlayer({ station, isPlaying, setIsPlaying }: AudioP
               });
               hlsRef.current = hls;
               
-              hls.on(Hls.Events.ERROR, (event, data) => {
+              hls.on(Hls.Events.ERROR, (_event, data) => {
                 if (data.fatal) {
                   console.warn(`HLS.js encountered fatal error: ${data.details}. Attempting recovery...`);
                   if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-                    console.log("HLS network error. Switching to proxied HLS playlist fallback...");
                     try {
                       hls.destroy();
                       hlsRef.current = null;
@@ -253,40 +258,74 @@ export default function AudioPlayer({ station, isPlaying, setIsPlaying }: AudioP
                 }
               });
 
-              hls.loadSource(targetUrl);
+              hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                if (isCancelled || !audioRef.current) return;
+                const p = audioRef.current.play();
+                playPromiseRef.current = p;
+                p.then(() => {
+                  if (!isCancelled) {
+                    setLoading(false);
+                    setStreamError(null);
+                  }
+                }).catch((err: any) => {
+                  if (!isCancelled && err.name !== "AbortError") {
+                    setErrorState();
+                  }
+                });
+              });
+
+              hls.loadSource(proxiedUrl);
               hls.attachMedia(audioRef.current);
             } else {
               // Absolute fallback using stream proxy
               audioRef.current.src = proxiedUrl;
               audioRef.current.load();
+              try {
+                const p = audioRef.current.play();
+                playPromiseRef.current = p;
+                await p;
+                if (!isCancelled) {
+                  setLoading(false);
+                  setStreamError(null);
+                }
+              } catch (e: any) {
+                if (!isCancelled && e.name !== "AbortError") setErrorState();
+              }
             }
           } else {
             // Standard MP3 / AAC / OGG streams
             audioRef.current.src = proxiedUrl;
             audioRef.current.load();
+            try {
+              const p = audioRef.current.play();
+              playPromiseRef.current = p;
+              await p;
+              if (!isCancelled) {
+                setLoading(false);
+                setStreamError(null);
+              }
+            } catch (err: any) {
+              if (isCancelled) return;
+              if (err.name === "AbortError" || err.message?.includes("interrupted")) {
+                console.log("Audio playback interrupted by a newer state change (expected behavior).");
+              } else {
+                console.warn("Audio playback failed for stream source:", err?.message || err);
+                setErrorState();
+              }
+            }
           }
-        }
-
-        setLoading(true);
-        try {
-          const playPromise = audioRef.current.play();
-          playPromiseRef.current = playPromise;
-
-          await playPromise;
-
-          if (isCancelled) return;
-          if (playPromiseRef.current === playPromise) {
-            setLoading(false);
-            setStreamError(null);
-          }
-        } catch (err: any) {
-          if (isCancelled) return;
-          
-          if (err.name === "AbortError" || err.message?.includes("interrupted")) {
-            console.log("Audio playback interrupted by a newer state change (expected behavior).");
-          } else {
-            console.error("Audio playback failed:", err);
-            setErrorState();
+        } else {
+          // If source didn't change, just attempt play
+          try {
+            const p = audioRef.current.play();
+            playPromiseRef.current = p;
+            await p;
+            if (!isCancelled) {
+              setLoading(false);
+              setStreamError(null);
+            }
+          } catch (err: any) {
+            if (!isCancelled && err.name !== "AbortError") setErrorState();
           }
         }
       };

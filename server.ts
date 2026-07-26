@@ -240,6 +240,7 @@ app.get("/api/proxy-stream", (req, res) => {
 
     const getRequestOptions = (customUA?: string, customReferer?: string) => {
       const opts: any = {
+        insecureHTTPParser: true,
         headers: {
           "User-Agent": customUA || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
           "Accept": "audio/mpeg, audio/*, */*",
@@ -255,12 +256,38 @@ app.get("/api/proxy-stream", (req, res) => {
     };
 
     const handleProxyResponse = (proxyRes: http.IncomingMessage, currentAttempt: number) => {
-      // Handle 401/403 with automatic fallback headers (e.g. VLC User-Agent / alternate referer)
-      if ((proxyRes.statusCode === 401 || proxyRes.statusCode === 403) && currentAttempt === 1) {
-        console.warn(`[Stream Proxy] Received ${proxyRes.statusCode} for ${streamUrlString}. Retrying with VLC User-Agent & Zeno referer...`);
-        const retryOpts = getRequestOptions("VLC/3.0.18 LibVLC/3.0.18", "https://zeno.fm/");
+      // Handle 401/403 with automatic fallback headers and endpoint rewrites
+      if ((proxyRes.statusCode === 401 || proxyRes.statusCode === 403) && currentAttempt < 3) {
+        console.warn(`[Stream Proxy] Received ${proxyRes.statusCode} for ${streamUrlString}. Retrying attempt ${currentAttempt + 1}...`);
+        
+        // Radio France domain endpoint fallback to midfi or mirror stream
+        if (streamUrlString.includes("stream.radiofrance.fr") || streamUrlString.includes("fip-hifi")) {
+          const fallbackUrl = "https://icecast.radiofrance.fr/fip-midfi.mp3";
+          console.log(`[Stream Proxy] Rewriting Radio France stream to resilient endpoint: ${fallbackUrl}`);
+          return res.redirect(`/api/proxy-stream?url=${encodeURIComponent(fallbackUrl)}`);
+        }
+
+        let retryOpts: any;
+        if (currentAttempt === 1) {
+          // Attempt 2: Try with VLC User Agent & empty referer
+          retryOpts = getRequestOptions("VLC/3.0.18 LibVLC/3.0.18", "");
+        } else {
+          // Attempt 3: Try minimal browser headers without metadata request
+          retryOpts = {
+            insecureHTTPParser: true,
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36",
+              "Accept": "*/*",
+              "Connection": "keep-alive"
+            }
+          };
+          if (parsedUrl.protocol === "https:") {
+            retryOpts.rejectUnauthorized = false;
+          }
+        }
+
         const retryReq = clientReqModule.get(parsedUrl, retryOpts, (retryRes) => {
-          handleProxyResponse(retryRes, 2);
+          handleProxyResponse(retryRes, currentAttempt + 1);
         });
         retryReq.setTimeout(8000);
         retryReq.on("error", (err) => {
