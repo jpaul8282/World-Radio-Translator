@@ -1,0 +1,85 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+body {
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+}
+
+/* Custom continuous wave animation for radio playing visualizer */
+@keyframes barRise {
+  0%, 100% {
+    transform: scaleY(0.15);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.wave-bar {
+  display: inline-block;
+  width: 3px;
+  height: 24px;
+  background-color: currentColor;
+  transform-origin: bottom;
+  animation: barRise 1.2s ease-in-out infinite;
+}
+
+.wave-bar:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.wave-bar:nth-child(3) {
+  animation-delay: 0.3s;
+}
+.wave-bar:nth-child(4) {
+  animation-delay: 0.45s;
+}
+.wave-bar:nth-child(5) {
+  animation-delay: 0.05s;
+}
+.wave-bar:nth-child(6) {
+  animation-delay: 0.25s;
+}
+.wave-bar:nth-child(7) {
+  animation-delay: 0.35s;
+}
+.wave-bar:nth-child(8) {
+  animation-delay: 0.1s;
+}
+
+/* Custom scrollbars for a clean look */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.3);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.5);
+}
+
+/* Ensure all select dropdowns and child option elements use high-contrast text on dark backgrounds in dark mode */
+.dark select {
+  background-color: #0f172a !important; /* bg-slate-900 */
+  color: #f8fafc !important; /* bg-slate-50 */
+}
+
+.dark select option,
+.dark option {
+  background-color: #1e293b !important; /* dark gray/slate-800 background */
+  color: #ffffff !important; /* crisp high-contrast white text */
+}
+
