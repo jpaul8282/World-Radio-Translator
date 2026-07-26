@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { RadioStation, LocationGeoProfile } from "../types";
 import { Radio, Play, Volume2, ShieldAlert, BadgeCheck, Search, X, Star } from "lucide-react";
+import { doc, setDoc, deleteDoc } from "firebase/firestore";
+import { auth, db, handleFirestoreError, OperationType } from "../lib/firebase";
 
 interface StationListProps {
   currentCountryProfile: LocationGeoProfile | null;
@@ -68,6 +70,35 @@ export default function StationList({
       localStorage.setItem("starred_radio_stations_data", JSON.stringify(nextSaved));
     } catch (err) {
       console.warn("Failed to persist favorites to localStorage", err);
+    }
+
+    // Optional sync to Firestore user_favorites
+    const user = auth.currentUser;
+    if (user) {
+      const favoriteDocRef = doc(db, "user_favorites", `${user.uid}_${station.stationuuid}`);
+      if (isStarred) {
+        deleteDoc(favoriteDocRef).catch((err) => {
+          handleFirestoreError(err, OperationType.DELETE, `user_favorites/${user.uid}_${station.stationuuid}`);
+        });
+      } else {
+        setDoc(
+          favoriteDocRef,
+          {
+            stationuuid: station.stationuuid,
+            name: station.name || "Station",
+            country: station.country || "",
+            state: station.state || "",
+            url_resolved: station.url_resolved || "",
+            favicon: station.favicon || "",
+            tags: station.tags || "",
+            userId: user.uid,
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        ).catch((err) => {
+          handleFirestoreError(err, OperationType.CREATE, `user_favorites/${user.uid}_${station.stationuuid}`);
+        });
+      }
     }
   };
 

@@ -1,0 +1,46 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidUserFavorite(data) {
+      return data.keys().hasAll(['stationuuid', 'name', 'userId'])
+        && data.stationuuid is string && data.stationuuid.size() <= 128
+        && data.name is string && data.name.size() <= 200
+        && data.userId is string && data.userId == request.auth.uid;
+    }
+
+    function isValidUserListenHistory(data) {
+      return data.keys().hasAll(['stationuuid', 'userId'])
+        && data.stationuuid is string && data.stationuuid.size() <= 128
+        && data.userId is string && data.userId == request.auth.uid;
+    }
+
+    // Favorites Collection
+    match /user_favorites/{favoriteId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidUserFavorite(request.resource.data);
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && isValidUserFavorite(request.resource.data);
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // User Listen History Document
+    match /user_listens/{userId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId) && isValidUserListenHistory(request.resource.data);
+      allow delete: if isOwner(userId);
+    }
+  }
+}

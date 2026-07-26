@@ -1,0 +1,86 @@
+{
+  "entities": {
+    "UserFavorite": {
+      "title": "User Favorite Radio Station",
+      "description": "Favorited station belonging to a user",
+      "type": "object",
+      "properties": {
+        "stationuuid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "country": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "state": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "url_resolved": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "favicon": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "tags": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["stationuuid", "name", "userId"]
+    },
+    "UserListenHistory": {
+      "title": "User Listen History",
+      "description": "Last listened radio station record for a user",
+      "type": "object",
+      "properties": {
+        "stationuuid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "stationName": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "playedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        }
+      },
+      "required": ["stationuuid", "userId"]
+    }
+  },
+  "firestore": {
+    "/user_favorites/{favoriteId}": {
+      "schema": "UserFavorite",
+      "description": "Collection of user favorited radio stations"
+    },
+    "/user_listens/{userId}": {
+      "schema": "UserListenHistory",
+      "description": "Document holding last active radio station session for a user"
+    }
+  }
+}

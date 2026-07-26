@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Info, ShieldAlert, Radio, Sparkles, Share2, Check, Mic, MicOff, Languages, Volume2, RefreshCw, ScrollText, Copy, Trash2, Download, CheckCheck, Sun, Moon, Wand2, ArrowRight, X, Globe } from "lucide-react";
+import { Info, ShieldAlert, Radio, Sparkles, Share2, Check, Mic, MicOff, Languages, Volume2, RefreshCw, ScrollText, Copy, Trash2, Download, CheckCheck, Sun, Moon, Wand2, ArrowRight, X, Globe, LogIn, LogOut, User as UserIcon, Database } from "lucide-react";
+import { onAuthStateChanged, User } from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
 
 import WorldMap from "./components/WorldMap";
 import StationList from "./components/StationList";
@@ -9,6 +11,7 @@ import LanguageFrequencyChart from "./components/LanguageFrequencyChart";
 import ResumeStationNotification from "./components/ResumeStationNotification";
 import { RadioStation, LocationGeoProfile, LanguageDetectionResult, LanguageEncounterEvent } from "./types";
 import { LiveTranslateClient, LiveTranslateState, LiveTranslateTurn, encodeWAV } from "./services/liveTranslateClient";
+import { auth, db, loginWithGoogle, logoutFirebase, testFirebaseConnection, handleFirestoreError, OperationType } from "./lib/firebase";
 
 const SUPPORTED_LANGUAGES = [
   "Arabic",
@@ -250,6 +253,20 @@ export default function App() {
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [profileLoading, setProfileLoading] = useState<boolean>(false);
 
+  // Firebase Authentication & Firestore User State
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    // Validate Firestore connection on app mount
+    testFirebaseConnection();
+
+    // Listen to Firebase Auth changes
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+    });
+    return () => unsubscribe();
+  }, []);
+
   // Resume Session / Last Played Station Persistence
   const [lastPlayedStation, setLastPlayedStation] = useState<RadioStation | null>(() => {
     try {
@@ -279,8 +296,25 @@ export default function App() {
       } catch (e) {
         console.warn("Failed to store last played station:", e);
       }
+
+      // Sync to Firestore if user is logged in
+      if (currentUser) {
+        const docRef = doc(db, "user_listens", currentUser.uid);
+        setDoc(
+          docRef,
+          {
+            stationuuid: activeStation.stationuuid,
+            stationName: activeStation.name,
+            playedAt: new Date().toISOString(),
+            userId: currentUser.uid,
+          },
+          { merge: true }
+        ).catch((err) => {
+          handleFirestoreError(err, OperationType.WRITE, `user_listens/${currentUser.uid}`);
+        });
+      }
     }
-  }, [activeStation?.stationuuid, isPlaying]);
+  }, [activeStation?.stationuuid, isPlaying, currentUser]);
 
   const [selectedCoords, setSelectedCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [radiusKm, setRadiusKm] = useState<number>(500);
@@ -733,6 +767,74 @@ export default function App() {
         onResume={handleSelectStation}
         darkMode={darkMode}
       />
+
+      {/* App Navigation & Firebase Auth Header Bar */}
+      <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 px-4 md:px-6 py-3">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-500/20">
+              <Globe className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <h1 className="font-display font-extrabold text-base tracking-tight text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                <span>World Radio Translator</span>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-mono text-[10px] font-semibold border border-emerald-500/20">
+                  Firebase Sync Active
+                </span>
+              </h1>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-sans">
+                Global Airwaves Scanner & Real-time Live Translation
+              </p>
+            </div>
+          </div>
+
+          {/* Firebase Authentication Controls */}
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            {currentUser ? (
+              <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 rounded-xl p-1.5 pl-2.5">
+                {currentUser.photoURL ? (
+                  <img
+                    src={currentUser.photoURL}
+                    alt={currentUser.displayName || "User"}
+                    className="w-6 h-6 rounded-full border border-emerald-500/50 object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <UserIcon className="w-4 h-4 text-emerald-500" />
+                )}
+                <div className="flex flex-col text-left">
+                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-tight max-w-[120px] truncate">
+                    {currentUser.displayName || currentUser.email || "Account Active"}
+                  </span>
+                  <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-mono">
+                    Cloud Synced
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => logoutFirebase()}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors cursor-pointer"
+                  title="Sign out of Firebase"
+                  id="btn_firebase_logout"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => loginWithGoogle()}
+                className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-emerald-500/50 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-2 shadow-xs transition-all active:scale-95 cursor-pointer"
+                title="Sign in with Google via Firebase Auth"
+                id="btn_firebase_login"
+              >
+                <LogIn className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Sign in with Google</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </header>
       
       {/* Absolute Unobtrusive Floating Dark Mode Toggle */}
       <button
