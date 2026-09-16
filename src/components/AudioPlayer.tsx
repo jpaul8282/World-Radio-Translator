@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { RadioStation } from "../types";
-import { Play, Pause, Volume2, VolumeX, ShieldAlert, BadgeInfo, Disc3, Radio } from "lucide-react";
+import { Play, Pause, Volume2, VolumeX, ShieldAlert, BadgeInfo, Disc3, Radio, Satellite, Wifi, Mic, Share2 } from "lucide-react";
 import Hls from "hls.js";
 import { getOrCreateAudioPipeline } from "../lib/audioPipeline";
 
@@ -8,9 +8,10 @@ interface AudioPlayerProps {
   station: RadioStation | null;
   isPlaying: boolean;
   setIsPlaying: (playing: boolean) => void;
+  onShareSession?: () => void;
 }
 
-export default function AudioPlayer({ station, isPlaying, setIsPlaying }: AudioPlayerProps) {
+export default function AudioPlayer({ station, isPlaying, setIsPlaying, onShareSession }: AudioPlayerProps) {
   const [volume, setVolume] = useState(0.8);
   const [isMuted, setIsMuted] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -463,6 +464,8 @@ export default function AudioPlayer({ station, isPlaying, setIsPlaying }: AudioP
                     }}
                     className="w-full h-full object-cover"
                   />
+                ) : station.isPodcast ? (
+                  <Mic className="w-5 h-5 text-emerald-500" />
                 ) : (
                   <Radio className="w-5 h-5 text-emerald-500" />
                 )}
@@ -474,11 +477,22 @@ export default function AudioPlayer({ station, isPlaying, setIsPlaying }: AudioP
             </div>
 
             <div className="flex-1 overflow-hidden">
-              <p className="font-display font-bold text-sm text-slate-800 dark:text-slate-100 truncate flex items-center gap-1.5">
-                {station.name}
-              </p>
-              <p className="text-xs text-slate-400 dark:text-slate-300 truncate capitalize">
-                {station.tags ? station.tags.split(',').slice(0, 2).join(' • ') : 'Global Channel'}
+              <div className="flex items-center gap-1.5">
+                <p className="font-display font-bold text-sm text-slate-800 dark:text-slate-100 truncate">
+                  {station.podcastShowName || station.name}
+                </p>
+                {station.isPodcast && (
+                  <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-mono text-[9px] font-bold shrink-0 uppercase">
+                    Live Podcast
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-400 dark:text-slate-300 truncate">
+                {station.podcastTopic
+                  ? `${station.podcastCategory ? `${station.podcastCategory} • ` : ""}${station.podcastTopic}`
+                  : station.tags
+                  ? station.tags.split(",").slice(0, 2).join(" • ")
+                  : "Global Channel"}
               </p>
             </div>
           </>
@@ -544,6 +558,32 @@ export default function AudioPlayer({ station, isPlaying, setIsPlaying }: AudioP
 
       {/* Media Player Volume & Actions */}
       <div className="flex items-center justify-end gap-3.5 w-full md:w-1/3">
+        {/* Neural WiFi Satellite Status Badge */}
+        {station && (
+          <div
+            className="hidden xl:flex items-center gap-1.5 px-2 py-1 rounded-lg bg-sky-500/10 dark:bg-sky-950/30 border border-sky-500/20 text-[10px] font-mono text-sky-700 dark:text-sky-300"
+            title="Active Neural WiFi 7 Satellite Carrier Downlink"
+          >
+            <Satellite className="w-3 h-3 text-sky-500 animate-pulse" />
+            <span className="font-semibold">Neural WiFi 7</span>
+            <span className="w-1 h-1 rounded-full bg-emerald-500 animate-ping" />
+          </div>
+        )}
+
+        {/* Share Live Session Button */}
+        {station && onShareSession && (
+          <button
+            type="button"
+            onClick={onShareSession}
+            className="p-1.5 rounded-lg border border-slate-200/80 dark:border-slate-800 text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50/50 dark:hover:bg-slate-800 transition-colors cursor-pointer flex items-center gap-1.5 text-xs"
+            title="Share current broadcast session via deep-link"
+            id="control_share_session"
+          >
+            <Share2 className="w-3.5 h-3.5 text-emerald-500" />
+            <span className="hidden sm:inline font-medium text-[11px]">Share</span>
+          </button>
+        )}
+
         {/* Volume Controllers */}
         <div className="flex items-center gap-2 text-slate-500">
           <button

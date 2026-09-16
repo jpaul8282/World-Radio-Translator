@@ -17,6 +17,57 @@ export interface RadioStation {
   bitrate: number;
   geo_lat?: number | string | null;
   geo_long?: number | string | null;
+  isPodcast?: boolean;
+  podcastShowName?: string;
+  podcastHost?: string;
+  podcastCategory?: string;
+  podcastTopic?: string;
+  podcastEpisode?: string;
+}
+
+export type PodcastCategory =
+  | 'All Categories'
+  | 'News & Analysis'
+  | 'Tech & Science'
+  | 'Culture & Arts'
+  | 'Storytelling & Audio Drama'
+  | 'Philosophy & Society'
+  | 'Interviews & Debates'
+  | 'Comedy & Satire';
+
+export interface LivePodcastShow {
+  id: string;
+  stationuuid: string;
+  showName: string;
+  episodeOrTopic: string;
+  network: string;
+  host?: string;
+  description: string;
+  category: PodcastCategory;
+  language: string;
+  country: string;
+  countryCode: string;
+  streamUrl: string;
+  streamUrlResolved: string;
+  homepage?: string;
+  favicon?: string;
+  tags: string[];
+  scheduleOrAiring: string;
+  isLive: boolean;
+  listenerCount?: number;
+  featured?: boolean;
+}
+
+export interface PodcastShowInsights {
+  showName: string;
+  network: string;
+  executiveSummary: string;
+  coreThemes: string[];
+  hostBio: string;
+  currentEpisodeAnalysis: string;
+  suggestedDiscussionPoints: string[];
+  targetLanguageAdvice: string;
+  source: string;
 }
 
 export interface LocationGeoProfile {
@@ -60,5 +111,46 @@ export interface LanguageFrequencyData {
   percentage: number;
   lastSeen: number;
   stations: string[];
+}
+
+export interface BookmarkedTurn {
+  id: string;
+  originalText: string;
+  translatedText: string;
+  timestamp: string; // ISO date string
+  stationName?: string;
+  stationCountry?: string;
+  targetLanguage?: string;
+  bookmarkedAt: number; // timestamp ms
+  audioUrl?: string;
+}
+
+export interface NeuralSatellite {
+  id: string;
+  name: string;
+  code: string;
+  orbitType: 'LEO' | 'MEO' | 'GEO' | 'Polar';
+  altitudeKm: number;
+  velocityKmS: number;
+  lat: number;
+  lng: number;
+  uplinkBand: string; // e.g. "Ka-Band Neural 60GHz", "THz Optical Laser"
+  wifiProtocol: string; // e.g. "WiFi 7 / 802.11be SpaceMesh"
+  latencyMs: number;
+  signalStrength: number; // 0 - 100%
+  throughputGbps: number;
+  status: 'ONLINE' | 'RELAYING' | 'SYNCHRONIZING' | 'OPTIMAL';
+  activeRelays: number;
+  region: string;
+}
+
+export interface SatelliteUplinkState {
+  enabled: boolean;
+  activeSatelliteId: string | null;
+  mode: 'auto-mesh' | 'manual-lock' | 'ionosphere-quantum';
+  downlinkLatency: number;
+  neuralSyncScore: number;
+  packetsRelayed: number;
+  wifiNoiseReduction: boolean;
 }
 

@@ -1,8 +1,76 @@
+# ==============================================================================
+# Git Ignore Rules - Remix: World Radio Translator
+# ==============================================================================
+
+# Dependencies
 node_modules/
-build/
+jspm_packages/
+.pnp
+.pnp.js
+
+# Production & Build Outputs
 dist/
+build/
+out/
+.next/
+*.tsbuildinfo
+
+# Test & Coverage Outputs
 coverage/
-.DS_Store
+.nyc_output/
+*.lcov
+test-results/
+
+# Logs & Debugging
+logs/
 *.log
-.env*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Runtime, Cache & Temporary Files
+.cache/
+.parcel-cache/
+.eslintcache/
+.turbo/
+*.tmp
+*.temp
+tmp/
+
+# Audio Clips & Temporary Media Recordings (User Exports)
+*.wav
+*.mp3
+*.aac
+*.ogg
+
+# Environment & Secret Files
+.env
+.env.*
 !.env.example
+*.local
+
+# System & OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# IDE & Editor Configurations
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.sublime-workspace
+*.sublime-project
+*.swp
+*.swo
+*~
+

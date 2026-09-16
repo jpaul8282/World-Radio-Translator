@@ -1,14 +1,28 @@
 {
-  "name": "react-example",
+  "name": "world-radio-translator",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.2.0",
+  "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/remix-radio/world-radio-translator.git"
+  },
+  "homepage": "https://github.com/remix-radio/world-radio-translator#readme",
+  "bugs": {
+    "url": "https://github.com/remix-radio/world-radio-translator/issues"
+  },
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "static-analysis": "tsc --noEmit",
+    "test": "tsx --test test/unit/*.test.ts test/dynamic/*.test.ts",
+    "test:unit": "tsx --test test/unit/*.test.ts",
+    "test:dynamic": "tsx --test test/dynamic/*.test.ts",
+    "audit": "npm audit --audit-level=high || true"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

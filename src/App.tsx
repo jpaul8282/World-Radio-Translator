@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Info, ShieldAlert, Radio, Sparkles, Share2, Check, Mic, MicOff, Languages, Volume2, RefreshCw, ScrollText, Copy, Trash2, Download, CheckCheck, Sun, Moon, Wand2, ArrowRight, X, Globe, LogIn, LogOut, User as UserIcon, Database } from "lucide-react";
+import { Info, ShieldAlert, Radio, Sparkles, Share2, Check, Mic, MicOff, Languages, Volume2, RefreshCw, ScrollText, Copy, Trash2, Download, CheckCheck, Sun, Moon, Wand2, ArrowRight, X, Globe, LogIn, LogOut, User as UserIcon, Database, Star, Bookmark, Search, LocateFixed, ArrowDownLeft, ShieldCheck, Scale, FileJson } from "lucide-react";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 
@@ -9,8 +9,15 @@ import StationList from "./components/StationList";
 import AudioPlayer from "./components/AudioPlayer";
 import LanguageFrequencyChart from "./components/LanguageFrequencyChart";
 import ResumeStationNotification from "./components/ResumeStationNotification";
-import { RadioStation, LocationGeoProfile, LanguageDetectionResult, LanguageEncounterEvent } from "./types";
+import LivePodcastShows from "./components/LivePodcastShows";
+import { ProjectInfoModal } from "./components/ProjectInfoModal";
+import { TranscriptSummaryModal } from "./components/TranscriptSummaryModal";
+import { SessionShareModal } from "./components/SessionShareModal";
+import { RadioStation, LocationGeoProfile, LanguageDetectionResult, LanguageEncounterEvent, BookmarkedTurn } from "./types";
 import { LiveTranslateClient, LiveTranslateState, LiveTranslateTurn, encodeWAV } from "./services/liveTranslateClient";
+import { filterTranscriptTurns, splitTextByKeyword, getTurnsForSummaryWindow } from "./lib/transcriptUtils";
+import { buildBroadcastSessionExport, downloadSessionJson } from "./lib/sessionExport";
+import { generateSessionShareUrl, parseSessionShareUrl, SessionShareState } from "./lib/sessionShare";
 import { auth, db, loginWithGoogle, logoutFirebase, testFirebaseConnection, handleFirestoreError, OperationType } from "./lib/firebase";
 
 const SUPPORTED_LANGUAGES = [
@@ -252,6 +259,17 @@ export default function App() {
   const [availableStations, setAvailableStations] = useState<RadioStation[]>([]);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [profileLoading, setProfileLoading] = useState<boolean>(false);
+  const [mainContentTab, setMainContentTab] = useState<"radio" | "podcasts">("radio");
+  const [savedSessionFeedback, setSavedSessionFeedback] = useState<boolean>(false);
+
+  // Deep-Link Full Session Sharing States
+  const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
+  const [shareSessionUrl, setShareSessionUrl] = useState<string>("");
+  const [copiedShareSessionFeedback, setCopiedShareSessionFeedback] = useState<boolean>(false);
+  const [sharedSessionJoinedNotice, setSharedSessionJoinedNotice] = useState<{
+    stationName: string;
+    targetLanguage: string;
+  } | null>(null);
 
   // Firebase Authentication & Firestore User State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -333,6 +351,128 @@ export default function App() {
   const [copiedTranscript, setCopiedTranscript] = useState(false);
   const [savedClipIndex, setSavedClipIndex] = useState<number | null>(null);
   const transcriptContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Bookmarked transcript turns state & persistent synchronization
+  const [bookmarkedTurns, setBookmarkedTurns] = useState<BookmarkedTurn[]>(() => {
+    try {
+      const saved = localStorage.getItem("world_radio_bookmarked_turns");
+      return saved ? JSON.parse(saved) : [];
+    } catch (err) {
+      console.warn("Failed to load bookmarked turns from localStorage:", err);
+      return [];
+    }
+  });
+  const [transcriptViewFilter, setTranscriptViewFilter] = useState<"all" | "bookmarks">("all");
+  const [bookmarkSearchQuery, setBookmarkSearchQuery] = useState<string>("");
+  const [transcriptSearchQuery, setTranscriptSearchQuery] = useState<string>("");
+  const [sharedTurnId, setSharedTurnId] = useState<string | null>(null);
+  const [highlightedTurnId, setHighlightedTurnId] = useState<string | null>(null);
+  const [showProjectModal, setShowProjectModal] = useState<boolean>(false);
+  const [projectModalInitialTab, setProjectModalInitialTab] = useState<"overview" | "policies" | "license" | "security" | "versioning" | "bugs" | "testing">("overview");
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("world_radio_bookmarked_turns", JSON.stringify(bookmarkedTurns));
+    } catch (err) {
+      console.warn("Failed to save bookmarked turns to localStorage:", err);
+    }
+  }, [bookmarkedTurns]);
+
+  const isTurnBookmarked = (turnId?: string) => {
+    if (!turnId) return false;
+    return bookmarkedTurns.some((b) => b.id === turnId);
+  };
+
+  const toggleBookmarkTurn = (turn: LiveTranslateTurn | BookmarkedTurn) => {
+    const turnId = turn.id || `turn-${Date.now()}`;
+    
+    if (isTurnBookmarked(turnId)) {
+      setBookmarkedTurns((prev) => prev.filter((b) => b.id !== turnId));
+    } else {
+      const newBookmark: BookmarkedTurn = {
+        id: turnId,
+        originalText: turn.originalText,
+        translatedText: turn.translatedText,
+        timestamp: turn.timestamp instanceof Date ? turn.timestamp.toISOString() : String(turn.timestamp),
+        stationName: (turn as BookmarkedTurn).stationName || activeStation?.name || "Global Radio Station",
+        stationCountry: (turn as BookmarkedTurn).stationCountry || activeStation?.country || "",
+        targetLanguage: (turn as BookmarkedTurn).targetLanguage || liveTargetLang,
+        bookmarkedAt: Date.now(),
+        audioUrl: turn.audioUrl
+      };
+      setBookmarkedTurns((prev) => [newBookmark, ...prev]);
+    }
+  };
+
+  const handleShareBookmarkedTurn = async (turn: BookmarkedTurn | LiveTranslateTurn) => {
+    const turnId = turn.id || `turn-${Date.now()}`;
+    const stationName = (turn as BookmarkedTurn).stationName || activeStation?.name || "Global Radio Station";
+    const country = (turn as BookmarkedTurn).stationCountry || activeStation?.country || "";
+    const targetLang = (turn as BookmarkedTurn).targetLanguage || liveTargetLang;
+    const timeFormatted = new Date(turn.timestamp).toLocaleString([], {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+
+    const shareTitle = `Radio Broadcast Translation • ${stationName}`;
+    const shareText = `📻 Broadcast Station: ${stationName}${country ? ` (${country})` : ""}\n🕒 Timestamp: ${timeFormatted}\n\n🎙️ Original Audio:\n"${turn.originalText}"\n\n✨ Interpretation (${targetLang}):\n"${turn.translatedText}"\n\n— Shared via Remix: World Radio Translator`;
+
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: window.location.href,
+        });
+        setSharedTurnId(turnId);
+        setTimeout(() => setSharedTurnId(null), 2500);
+        return;
+      } catch (err: any) {
+        if (err?.name === "AbortError") {
+          return; // User cancelled share dialog
+        }
+        console.warn("navigator.share failed, falling back to clipboard:", err);
+      }
+    }
+
+    // Fallback: Copy pre-formatted message to clipboard
+    try {
+      await navigator.clipboard.writeText(shareText);
+      setSharedTurnId(turnId);
+      setTimeout(() => setSharedTurnId(null), 2500);
+    } catch (clipErr) {
+      console.warn("Clipboard fallback failed:", clipErr);
+    }
+  };
+
+  const clearAllBookmarks = () => {
+    if (window.confirm("Are you sure you want to remove all saved transcript bookmarks?")) {
+      setBookmarkedTurns([]);
+    }
+  };
+
+  const handleJumpToContext = (turnId: string) => {
+    // Switch to "all" log view if currently in bookmarks tab
+    if (transcriptViewFilter !== "all") {
+      setTranscriptViewFilter("all");
+    }
+
+    // Set highlight pulse on target turn
+    setHighlightedTurnId(turnId);
+
+    // Allow DOM to update tab before scrolling
+    setTimeout(() => {
+      const element = document.getElementById(`turn-item-${turnId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 80);
+
+    // Reset highlight effect after animation duration
+    setTimeout(() => {
+      setHighlightedTurnId((curr) => (curr === turnId ? null : curr));
+    }, 3500);
+  };
 
   // Language Auto-Detection State & Handlers
   const [detectionResult, setDetectionResult] = useState<LanguageDetectionResult | null>(null);
@@ -488,6 +628,26 @@ export default function App() {
   };
 
   const handleCopyTranscript = () => {
+    if (transcriptViewFilter === "bookmarks") {
+      if (bookmarkedTurns.length === 0) return;
+      let text = "=== World Radio Translator - Saved Bookmarks ===\n";
+      text += `Total Bookmarks: ${bookmarkedTurns.length}\n`;
+      text += `Date: ${new Date().toLocaleDateString()}\n\n`;
+
+      bookmarkedTurns.forEach((turn, idx) => {
+        const timeStr = new Date(turn.timestamp).toLocaleString();
+        text += `[Bookmark ${idx + 1} - ${turn.stationName || "Radio"} (${turn.targetLanguage || "Translated"}) - ${timeStr}]\n`;
+        text += `Original Stream: ${turn.originalText}\n`;
+        text += `Translation: ${turn.translatedText}\n\n`;
+      });
+
+      navigator.clipboard.writeText(text).then(() => {
+        setCopiedTranscript(true);
+        setTimeout(() => setCopiedTranscript(false), 2000);
+      });
+      return;
+    }
+
     if (liveState.turns.length === 0 && !liveState.userTranscript && !liveState.modelTranscript) return;
     
     let text = "=== World Radio Translator Transcript ===\n";
@@ -515,6 +675,31 @@ export default function App() {
   };
 
   const handleDownloadTranscript = () => {
+    if (transcriptViewFilter === "bookmarks") {
+      if (bookmarkedTurns.length === 0) return;
+      let text = "=== World Radio Translator - Saved Bookmarks ===\n";
+      text += `Total Bookmarks: ${bookmarkedTurns.length}\n`;
+      text += `Date: ${new Date().toLocaleDateString()}\n\n`;
+
+      bookmarkedTurns.forEach((turn, idx) => {
+        const timeStr = new Date(turn.timestamp).toLocaleString();
+        text += `[Bookmark ${idx + 1} - ${turn.stationName || "Radio"} (${turn.targetLanguage || "Translated"}) - ${timeStr}]\n`;
+        text += `Original Stream: ${turn.originalText}\n`;
+        text += `Translation: ${turn.translatedText}\n\n`;
+      });
+
+      const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `world_radio_saved_bookmarks_${Date.now()}.txt`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      return;
+    }
+
     if (liveState.turns.length === 0 && !liveState.userTranscript && !liveState.modelTranscript) return;
 
     let text = "=== World Radio Translator Transcript ===\n";
@@ -542,6 +727,102 @@ export default function App() {
   const clearSessionTranscript = () => {
     liveClient.clearHistory();
     setLiveState(liveClient.getLiveState());
+    setTranscriptSearchQuery("");
+  };
+
+  const handleSaveFullSession = () => {
+    const sessionExport = buildBroadcastSessionExport({
+      station: activeStation,
+      turns: liveState.turns,
+      bookmarks: bookmarkedTurns,
+      targetLanguage: liveTargetLang,
+      detectionResult,
+      liveStatus: liveState.status,
+      liveState,
+    });
+
+    downloadSessionJson(sessionExport);
+    setSavedSessionFeedback(true);
+    setTimeout(() => setSavedSessionFeedback(false), 2500);
+  };
+
+  const handleShareFullSession = () => {
+    const shareState: SessionShareState = {
+      station: activeStation,
+      targetLanguage: liveTargetLang,
+      filters: {
+        tab: mainContentTab,
+        radiusKm,
+        selectedCoords,
+        country: selectedProfile?.country || activeStation?.country,
+        transcriptView: transcriptViewFilter,
+        transcriptSearch: transcriptSearchQuery,
+      },
+      autoPlay: true,
+    };
+
+    const url = generateSessionShareUrl(window.location.origin, shareState);
+    setShareSessionUrl(url);
+    setIsShareModalOpen(true);
+
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url).then(() => {
+        setCopiedShareSessionFeedback(true);
+        setTimeout(() => setCopiedShareSessionFeedback(false), 2500);
+      }).catch(() => {});
+    }
+  };
+
+  // Broadcast transcript summarization states
+  const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
+  const [summaryText, setSummaryText] = useState<string | null>(null);
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [summaryTurnsCount, setSummaryTurnsCount] = useState(0);
+  const [summaryIsFallback, setSummaryIsFallback] = useState(false);
+
+  const handleSummarizeTranscript = async () => {
+    if (liveState.turns.length === 0) return;
+
+    // Filter turns belonging to the last 10 minutes of broadcast session
+    const turnsToSummarize = getTurnsForSummaryWindow(liveState.turns, 10);
+    if (turnsToSummarize.length === 0) return;
+
+    setIsSummaryModalOpen(true);
+    setIsSummarizing(true);
+    setSummaryError(null);
+    setSummaryTurnsCount(turnsToSummarize.length);
+
+    try {
+      const response = await fetch("/api/summarize-transcript", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          turns: turnsToSummarize,
+          stationName: activeStation?.name || "Active Broadcast",
+          country: activeStation?.country || "",
+          targetLanguage: liveTargetLang || "English",
+          windowMinutes: 10,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Server returned error status ${response.status}`);
+      }
+
+      const data = await response.json();
+      setSummaryText(data.summary);
+      setSummaryTurnsCount(data.turnsCount || turnsToSummarize.length);
+      setSummaryIsFallback(!!data.isFallback);
+    } catch (err: any) {
+      console.error("[Summarize Transcript] Error:", err);
+      setSummaryError(err.message || "Failed to generate broadcast summary.");
+    } finally {
+      setIsSummarizing(false);
+    }
   };
 
   const generateSyntheticWavClip = (text: string): Blob => {
@@ -656,19 +937,59 @@ export default function App() {
     localStorage.setItem("world_radio_dark_mode", String(darkMode));
   }, [darkMode]);
 
-  // Parse URL query coordinates on startup
+  // Parse URL query coordinates and deep-link session sharing on startup
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const urlLat = params.get("lat");
-    const urlLng = params.get("lng");
-    const urlRadius = params.get("radius");
+    const parsedShared = parseSessionShareUrl(window.location.search);
 
-    const initialLat = urlLat ? parseFloat(urlLat) : 46.2276; // Alpine region coordinates as default
-    const initialLng = urlLng ? parseFloat(urlLng) : 2.2137;
-    const initialRadius = urlRadius ? parseInt(urlRadius, 10) : 500;
+    let initialLat = 46.2276; // Alpine region coordinates as default
+    let initialLng = 2.2137;
+    let initialRadius = 500;
+
+    if (parsedShared.isValid) {
+      if (parsedShared.targetLanguage) {
+        setLiveTargetLang(parsedShared.targetLanguage);
+      }
+      if (parsedShared.filters.tab) {
+        setMainContentTab(parsedShared.filters.tab);
+      }
+      if (parsedShared.filters.radiusKm) {
+        initialRadius = parsedShared.filters.radiusKm;
+        setRadiusKm(parsedShared.filters.radiusKm);
+      }
+      if (parsedShared.filters.selectedCoords) {
+        initialLat = parsedShared.filters.selectedCoords.lat;
+        initialLng = parsedShared.filters.selectedCoords.lng;
+      }
+      if (parsedShared.filters.transcriptView) {
+        setTranscriptViewFilter(parsedShared.filters.transcriptView);
+      }
+      if (parsedShared.filters.transcriptSearch) {
+        setTranscriptSearchQuery(parsedShared.filters.transcriptSearch);
+      }
+      if (parsedShared.station) {
+        setActiveStation(parsedShared.station);
+        if (parsedShared.autoPlay) {
+          setIsPlaying(true);
+        }
+        setSharedSessionJoinedNotice({
+          stationName: parsedShared.station.name,
+          targetLanguage: parsedShared.targetLanguage || "English",
+        });
+        setTimeout(() => setSharedSessionJoinedNotice(null), 8000);
+      }
+    } else {
+      const urlLat = params.get("lat");
+      const urlLng = params.get("lng");
+      const urlRadius = params.get("radius");
+
+      if (urlLat) initialLat = parseFloat(urlLat);
+      if (urlLng) initialLng = parseFloat(urlLng);
+      if (urlRadius) initialRadius = parseInt(urlRadius, 10);
+      setRadiusKm(initialRadius);
+    }
 
     setSelectedCoords({ lat: initialLat, lng: initialLng });
-    setRadiusKm(initialRadius);
 
     setProfileLoading(true);
     fetch("/api/geocode", {
@@ -788,8 +1109,41 @@ export default function App() {
             </div>
           </div>
 
-          {/* Firebase Authentication Controls */}
-          <div className="flex items-center gap-2 self-end sm:self-auto">
+            {/* Policies & Terms Direct Launcher */}
+            <button
+              type="button"
+              onClick={() => {
+                setProjectModalInitialTab("policies");
+                setShowProjectModal(true);
+              }}
+              className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
+              title="Service, Data, Privacy, and Radio Streaming Policies"
+              id="btn_open_policies_modal"
+            >
+              <Scale className="w-3.5 h-3.5 text-emerald-500" />
+              <span className="hidden sm:inline">Policies & Terms</span>
+            </button>
+
+            {/* OpenSSF Best Practices & Compliance Hub */}
+            <button
+              type="button"
+              onClick={() => {
+                setProjectModalInitialTab("overview");
+                setShowProjectModal(true);
+              }}
+              className="px-2.5 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
+              title="Open Source Standards, FLOSS License, Security Policies & Automated Test Hub"
+              id="btn_open_project_info_modal"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+              <span className="hidden sm:inline">OpenSSF Standards</span>
+              <span className="font-mono text-[10px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-800 dark:text-emerald-200">
+                v1.2.0
+              </span>
+            </button>
+
+            {/* Firebase Authentication Controls */}
+            <div className="flex items-center gap-2 self-end sm:self-auto">
             {currentUser ? (
               <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 rounded-xl p-1.5 pl-2.5">
                 {currentUser.photoURL ? (
@@ -852,6 +1206,36 @@ export default function App() {
         {/* Left Section: Map pane & Channel Bento Selector */}
         <div className="flex-1 p-4 md:p-5 flex flex-col gap-4 lg:gap-5 w-full max-w-7xl mx-auto">
           
+          {/* Shared Session Joined Welcome Banner */}
+          {sharedSessionJoinedNotice && (
+            <div
+              className="bg-gradient-to-r from-teal-500/15 via-emerald-500/10 to-transparent border border-teal-500/30 text-teal-950 dark:text-teal-200 px-4 py-3 rounded-2xl text-xs flex items-center justify-between shadow-sm animate-fade-in"
+              id="notice-shared-session-joined"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-1.5 rounded-lg bg-teal-500/20 text-teal-600 dark:text-teal-300">
+                  <Radio className="w-4 h-4 animate-pulse" />
+                </div>
+                <div>
+                  <span className="font-bold uppercase tracking-wider text-[10px] text-teal-700 dark:text-teal-400 font-mono block">
+                    Shared Live Session Active
+                  </span>
+                  <span>
+                    Tuned into <strong>{sharedSessionJoinedNotice.stationName}</strong> with live interpreter target:{" "}
+                    <strong className="underline">{sharedSessionJoinedNotice.targetLanguage}</strong>.
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setSharedSessionJoinedNotice(null)}
+                className="text-teal-500 hover:text-teal-700 dark:hover:text-teal-300 p-1 cursor-pointer"
+                title="Dismiss banner"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           {/* Gemini Live Voice-to-Voice Translation Dashboard */}
           <section className="bg-gradient-to-r from-emerald-500/5 to-teal-500/5 dark:from-emerald-950/10 dark:to-teal-950/10 border border-emerald-500/25 dark:border-emerald-500/10 rounded-2xl p-4 md:p-5 flex flex-col gap-4 shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-emerald-500/10 pb-4">
@@ -1068,26 +1452,91 @@ export default function App() {
             )}
 
             {/* Real-time Broadcast Transcription Feed Panel */}
-            {(liveState.status === "connected" || liveState.status === "error" || liveState.status === "connecting" || liveState.turns.length > 0 || liveState.userTranscript || liveState.modelTranscript) && (
+            {(liveState.status === "connected" || liveState.status === "error" || liveState.status === "connecting" || liveState.turns.length > 0 || liveState.userTranscript || liveState.modelTranscript || bookmarkedTurns.length > 0) && (
               <div className="border border-slate-200/60 dark:border-slate-800/60 rounded-xl bg-slate-50/50 dark:bg-slate-950/20 p-4 shadow-sm flex flex-col gap-3.5">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-150 dark:border-slate-800/40 pb-3">
-                  <div className="flex items-center gap-2">
-                    <ScrollText className="w-4 h-4 text-emerald-500" />
-                    <div>
-                      <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider font-mono">
-                        Live Broadcast Transcription Feed
-                      </h3>
-                      <p className="text-[10px] text-slate-400 dark:text-slate-300 font-sans">
-                        Continuous log of captured and translated broadcast audio
-                      </p>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-150 dark:border-slate-800/40 pb-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <ScrollText className="w-4 h-4 text-emerald-500" />
+                      <div>
+                        <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider font-mono">
+                          Broadcast Transcription Feed
+                        </h3>
+                        <p className="text-[10px] text-slate-400 dark:text-slate-300 font-sans">
+                          Continuous log of captured audio & saved translation bookmarks
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* View Filter Toggle Buttons */}
+                    <div className="flex items-center gap-1 bg-slate-200/60 dark:bg-slate-900/80 p-0.5 rounded-lg text-xs font-mono border border-slate-200/50 dark:border-slate-800 self-start sm:self-auto">
+                      <button
+                        onClick={() => setTranscriptViewFilter("all")}
+                        className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer flex items-center gap-1.5 text-[11px] ${
+                          transcriptViewFilter === "all"
+                            ? "bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-2sm"
+                            : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                        }`}
+                      >
+                        <span>All Logs</span>
+                        <span className="px-1.5 py-0.2 rounded-full bg-slate-100 dark:bg-slate-700/60 text-[10px]">
+                          {transcriptSearchQuery.trim()
+                            ? `${filterTranscriptTurns(liveState.turns, transcriptSearchQuery).length}/${liveState.turns.length}`
+                            : liveState.turns.length}
+                        </span>
+                      </button>
+
+                      <button
+                        onClick={() => setTranscriptViewFilter("bookmarks")}
+                        className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer flex items-center gap-1.5 text-[11px] ${
+                          transcriptViewFilter === "bookmarks"
+                            ? "bg-amber-500/10 dark:bg-amber-400/10 text-amber-600 dark:text-amber-300 border border-amber-500/30 shadow-2sm"
+                            : "text-slate-500 hover:text-amber-500 dark:text-slate-400 dark:hover:text-amber-300"
+                        }`}
+                      >
+                        <Star className={`w-3.5 h-3.5 ${bookmarkedTurns.length > 0 ? "fill-amber-400 text-amber-500" : ""}`} />
+                        <span>Saved Bookmarks</span>
+                        <span className="px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px] font-bold">
+                          {bookmarkedTurns.length}
+                        </span>
+                      </button>
                     </div>
                   </div>
                   
                   {/* Action buttons */}
-                  <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                  <div className="flex items-center gap-1.5 self-end md:self-auto flex-wrap">
+                    {/* Summarize Transcript Button */}
+                    <button
+                      id="btn-summarize-transcript"
+                      onClick={handleSummarizeTranscript}
+                      disabled={liveState.turns.length === 0 || isSummarizing}
+                      title={
+                        liveState.turns.length === 0
+                          ? "No transcript turns captured yet to summarize"
+                          : "Summarize the last 10 minutes of broadcast with Gemini 3.8 Flash"
+                      }
+                      className={`p-1 px-2.5 rounded-lg text-[11px] font-medium transition-all flex items-center gap-1.5 cursor-pointer shadow-2sm ${
+                        liveState.turns.length === 0
+                          ? "opacity-50 cursor-not-allowed bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-400"
+                          : "bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300/60 dark:border-emerald-700/50 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 hover:border-emerald-400 font-semibold"
+                      }`}
+                    >
+                      {isSummarizing ? (
+                        <>
+                          <RefreshCw className="w-3 h-3 text-emerald-600 dark:text-emerald-400 animate-spin" />
+                          <span>Summarizing...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                          <span>Summarize (10m)</span>
+                        </>
+                      )}
+                    </button>
+
                     <button
                       onClick={handleCopyTranscript}
-                      title="Copy full transcript"
+                      title={transcriptViewFilter === "bookmarks" ? "Copy saved bookmarks" : "Copy full transcript"}
                       className="p-1 px-2.5 rounded-lg text-[11px] font-medium bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 text-slate-600 dark:text-slate-300 hover:text-slate-850 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors flex items-center gap-1 cursor-pointer shadow-2sm"
                     >
                       {copiedTranscript ? (
@@ -1102,145 +1551,522 @@ export default function App() {
                         </>
                       )}
                     </button>
+
                     <button
                       onClick={handleDownloadTranscript}
-                      title="Download as TXT"
+                      title={transcriptViewFilter === "bookmarks" ? "Download bookmarks as TXT" : "Download transcript as TXT"}
                       className="p-1 px-2.5 rounded-lg text-[11px] font-medium bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 text-slate-600 dark:text-slate-300 hover:text-slate-850 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors flex items-center gap-1 cursor-pointer shadow-2sm"
                     >
                       <Download className="w-3 h-3" />
                       <span>Download</span>
                     </button>
+
+                    {/* Save Full Session JSON Button */}
                     <button
-                      onClick={clearSessionTranscript}
-                      title="Clear session history"
-                      className="p-1 px-2.5 rounded-lg text-[11px] font-medium bg-white dark:bg-rose-950/20 shadow-2sm border border-slate-200/80 dark:border-rose-900/30 text-slate-500 dark:text-rose-400 hover:text-rose-600 hover:border-rose-200 dark:hover:text-rose-300 dark:hover:border-rose-900/65 hover:bg-rose-50 transition-colors flex items-center gap-1 cursor-pointer"
+                      id="btn-save-full-session"
+                      onClick={handleSaveFullSession}
+                      title="Save full broadcast session (station metadata, all transcript turns & user bookmarks) as JSON for offline analysis"
+                      className={`p-1 px-2.5 rounded-lg text-[11px] font-medium transition-all flex items-center gap-1.5 cursor-pointer shadow-2sm ${
+                        savedSessionFeedback
+                          ? "bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-400 text-emerald-600 dark:text-emerald-300"
+                          : "bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 text-slate-700 dark:text-slate-200 hover:text-emerald-600 dark:hover:text-emerald-400 hover:border-emerald-300 dark:hover:border-emerald-700/60 hover:bg-emerald-50/40 dark:hover:bg-slate-800/60"
+                      }`}
                     >
-                      <Trash2 className="w-3 h-3" />
-                      <span>Clear</span>
+                      {savedSessionFeedback ? (
+                        <>
+                          <CheckCheck className="w-3 h-3 text-emerald-500 animate-scale" />
+                          <span className="text-emerald-600 dark:text-emerald-400 font-semibold">Saved Session!</span>
+                        </>
+                      ) : (
+                        <>
+                          <FileJson className="w-3 h-3 text-emerald-500" />
+                          <span className="font-semibold">Save Full Session</span>
+                        </>
+                      )}
                     </button>
+
+                    {/* Share Full Session Deep-Link Button */}
+                    <button
+                      id="btn-share-full-session"
+                      onClick={handleShareFullSession}
+                      title="Share full live session with deep-link URL (station, language & filters) for simultaneous listening"
+                      className={`p-1 px-2.5 rounded-lg text-[11px] font-medium transition-all flex items-center gap-1.5 cursor-pointer shadow-2sm ${
+                        copiedShareSessionFeedback
+                          ? "bg-teal-50 dark:bg-teal-950/50 border border-teal-400 text-teal-600 dark:text-teal-300"
+                          : "bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 text-slate-700 dark:text-slate-200 hover:text-teal-600 dark:hover:text-teal-400 hover:border-teal-300 dark:hover:border-teal-700/60 hover:bg-teal-50/40 dark:hover:bg-slate-800/60"
+                      }`}
+                    >
+                      {copiedShareSessionFeedback ? (
+                        <>
+                          <CheckCheck className="w-3 h-3 text-teal-500 animate-scale" />
+                          <span className="text-teal-600 dark:text-teal-400 font-semibold">Link Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Share2 className="w-3 h-3 text-teal-500" />
+                          <span className="font-semibold">Share Full Session</span>
+                        </>
+                      )}
+                    </button>
+
+                    {transcriptViewFilter === "all" ? (
+                      <button
+                        onClick={clearSessionTranscript}
+                        title="Clear session history"
+                        className="p-1 px-2.5 rounded-lg text-[11px] font-medium bg-white dark:bg-rose-950/20 shadow-2sm border border-slate-200/80 dark:border-rose-900/30 text-slate-500 dark:text-rose-400 hover:text-rose-600 hover:border-rose-200 dark:hover:text-rose-300 dark:hover:border-rose-900/65 hover:bg-rose-50 transition-colors flex items-center gap-1 cursor-pointer"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>Clear</span>
+                      </button>
+                    ) : (
+                      bookmarkedTurns.length > 0 && (
+                        <button
+                          onClick={clearAllBookmarks}
+                          title="Clear all saved bookmarks"
+                          className="p-1 px-2.5 rounded-lg text-[11px] font-medium bg-white dark:bg-rose-950/20 shadow-2sm border border-slate-200/80 dark:border-rose-900/30 text-slate-500 dark:text-rose-400 hover:text-rose-600 hover:border-rose-200 dark:hover:text-rose-300 dark:hover:border-rose-900/65 hover:bg-rose-50 transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Clear All</span>
+                        </button>
+                      )
+                    )}
                   </div>
                 </div>
 
                 {/* Subtitle list scroll container */}
                 <div 
                   ref={transcriptContainerRef}
-                  className="flex flex-col gap-4 max-h-64 overflow-y-auto pr-2 custom-scrollbar scroll-smooth"
+                  className="flex flex-col gap-4 max-h-72 overflow-y-auto pr-2 custom-scrollbar scroll-smooth"
                 >
-                  {/* Grid Column Headers (Visible list is not empty) */}
-                  {liveState.turns.length > 0 && (
-                    <div className="hidden md:grid grid-cols-2 gap-4 border-b border-slate-100 dark:border-slate-800/60 pb-2 text-[10px] font-mono font-bold text-slate-400 dark:text-slate-300 tracking-wider">
-                      <div>CAPTURED ORIGINAL AUDIO</div>
-                      <div>GEMINI SIMULTANEOUS INTERPRETATION</div>
-                    </div>
-                  )}
-
-                  {/* Historical entries */}
-                  {liveState.turns.map((turn, idx) => (
-                    <div 
-                      key={turn.id || idx} 
-                      className="flex flex-col gap-2 pb-3.5 border-b border-slate-100 dark:border-slate-800/40 text-xs"
-                    >
-                      {/* Turn Action Bar with Save Clip button */}
-                      <div className="flex items-center justify-between px-1 text-[11px] font-mono">
-                        <div className="flex items-center gap-2">
-                          <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-[10px] border border-slate-200/50 dark:border-slate-700/50">
-                            Turn #{idx + 1}
-                          </span>
-                          <span className="text-slate-400 dark:text-slate-300 text-[10px]">
-                            {new Date(turn.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                          </span>
-                        </div>
-
-                        <button
-                          onClick={() => handleSaveTurnClip(turn, idx)}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-2sm border ${
-                            savedClipIndex === idx
-                              ? "bg-emerald-600 text-white border-emerald-600"
-                              : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 hover:border-emerald-500/60 active:scale-95"
-                          }`}
-                          title="Extract and save audio snippet for this turn as a WAV download"
-                        >
-                          {savedClipIndex === idx ? (
-                            <>
-                              <CheckCheck className="w-3.5 h-3.5 text-white" />
-                              <span>Clip Saved!</span>
-                            </>
-                          ) : (
-                            <>
-                              <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                              <span>Save Clip</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-stretch">
-                        {/* Left Side: Original Native Language */}
-                        <div className="p-3 rounded-xl border border-slate-200/50 dark:border-slate-850 bg-slate-100/30 dark:bg-slate-900/10 flex flex-col gap-1.5 justify-between">
-                          <p className="text-slate-700 dark:text-slate-200 leading-relaxed font-sans text-sm font-medium">
-                            {turn.originalText}
-                          </p>
-                          <div className="flex items-center justify-between text-[9px] text-slate-400 dark:text-slate-300 font-mono border-t border-slate-100/50 dark:border-slate-800/20 pt-1.5 mt-0.5">
-                            <span className="font-bold tracking-wider uppercase">NATIVE STREAM</span>
+                  {/* ALL LOGS VIEW */}
+                  {transcriptViewFilter === "all" && (() => {
+                    const filteredTurns = filterTranscriptTurns(liveState.turns, transcriptSearchQuery);
+                    return (
+                      <>
+                        {/* Search Bar for All Logs */}
+                        {(liveState.turns.length > 0 || transcriptSearchQuery) && (
+                          <div className="sticky top-0 z-10 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-xs pb-1 pt-0.5">
+                            <div className="relative">
+                              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                              <input
+                                type="text"
+                                value={transcriptSearchQuery}
+                                onChange={(e) => setTranscriptSearchQuery(e.target.value)}
+                                placeholder="Filter transcript turns by keyword (native audio or translation)..."
+                                className="w-full pl-8 pr-24 py-1.5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition-all shadow-2xs"
+                                id="input_transcript_search_all_logs"
+                              />
+                              {transcriptSearchQuery ? (
+                                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold border border-emerald-500/20">
+                                    {filteredTurns.length} {filteredTurns.length === 1 ? "match" : "matches"}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setTranscriptSearchQuery("")}
+                                    className="p-1 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                                    title="Clear keyword search"
+                                    id="btn_clear_transcript_search"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-mono text-slate-400 dark:text-slate-400 pointer-events-none">
+                                  {liveState.turns.length} {liveState.turns.length === 1 ? "turn" : "turns"}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        </div>
+                        )}
 
-                        {/* Right Side: Translation */}
-                        <div className="p-3 rounded-xl border border-emerald-500/12 dark:border-emerald-500/10 bg-emerald-500/[0.015] dark:bg-emerald-500/[0.01] flex flex-col gap-1.5 justify-between">
-                          <p className="text-emerald-900 dark:text-emerald-300 leading-relaxed font-sans text-sm font-semibold">
-                            {turn.translatedText}
-                          </p>
-                          <div className="flex items-center justify-between text-[9px] text-emerald-600 dark:text-emerald-400/90 font-mono border-t border-emerald-500/5 dark:border-emerald-500/5 pt-1.5 mt-0.5">
-                            <span className="font-bold tracking-wider uppercase">Interpreted ({liveTargetLang})</span>
+                        {transcriptSearchQuery.trim() && filteredTurns.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center py-8 text-center text-slate-400 dark:text-slate-300 bg-white/40 dark:bg-slate-900/20 rounded-xl border border-dashed border-slate-200 dark:border-slate-800/60 p-5">
+                            <Search className="w-7 h-7 text-slate-400/60 mb-2 animate-pulse" />
+                            <p className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider font-mono">
+                              No matching transcript logs found
+                            </p>
+                            <p className="text-[11px] text-slate-400 dark:text-slate-400 mt-1 max-w-sm">
+                              No transcript turns matched &ldquo;{transcriptSearchQuery}&rdquo;. Try another keyword or clear the search filter.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => setTranscriptSearchQuery("")}
+                              className="mt-3 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20 transition-colors cursor-pointer"
+                              id="btn_reset_transcript_search"
+                            >
+                              Clear Keyword Filter
+                            </button>
                           </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                        ) : (
+                          <>
+                            {/* Grid Column Headers (Visible list is not empty) */}
+                            {filteredTurns.length > 0 && (
+                              <div className="hidden md:grid grid-cols-2 gap-4 border-b border-slate-100 dark:border-slate-800/60 pb-2 text-[10px] font-mono font-bold text-slate-400 dark:text-slate-300 tracking-wider">
+                                <div>CAPTURED ORIGINAL AUDIO</div>
+                                <div>GEMINI SIMULTANEOUS INTERPRETATION</div>
+                              </div>
+                            )}
 
-                  {/* Incoming Live Decoding Stream (User & Model Side by Side) */}
-                  {(liveState.userTranscript || liveState.modelTranscript) && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs items-stretch">
-                      {/* Left: Original decoding live stream */}
-                      <div className="p-3 rounded-xl border border-dashed border-slate-300/85 dark:border-slate-800 bg-slate-50/10 dark:bg-slate-900/5 flex flex-col gap-2 justify-between">
-                        <p className="text-slate-500 dark:text-slate-400 leading-relaxed font-sans text-sm italic">
-                          {liveState.userTranscript ? `"${liveState.userTranscript}"` : "Listening for active speech segments..."}
-                        </p>
-                        <div className="flex items-center justify-between text-[9px] text-slate-400 dark:text-slate-300 font-mono border-t border-dashed border-slate-200/50 dark:border-slate-800/20 pt-1.5">
-                          <span className="flex items-center gap-1.5 font-bold uppercase tracking-wider">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-                            DETECTOR
-                          </span>
-                          {liveState.userTranscript && (
-                            <span className="text-amber-500 font-bold tracking-widest animate-pulse">DECODING...</span>
+                            {/* Historical entries */}
+                            {filteredTurns.map((turn, idx) => {
+                              const originalIndex = liveState.turns.findIndex(
+                                (t) => (t.id && t.id === turn.id) || t === turn
+                              );
+                              const turnNumber = originalIndex !== -1 ? originalIndex + 1 : idx + 1;
+                              const isHighlighted = highlightedTurnId === turn.id;
+                              return (
+                                <div 
+                                  key={turn.id || idx} 
+                                  id={`turn-item-${turn.id}`}
+                                  className={`flex flex-col gap-2 pb-3.5 border-b text-xs transition-all duration-500 rounded-xl px-2.5 py-2 ${
+                                    isHighlighted
+                                      ? "bg-amber-500/15 dark:bg-amber-500/20 border-amber-500/60 shadow-md ring-2 ring-amber-400/50 scale-[1.01]"
+                                      : "border-slate-100 dark:border-slate-800/40"
+                                  }`}
+                                >
+                                  {/* Turn Action Bar with Star Bookmark & Save Clip button */}
+                                  <div className="flex items-center justify-between px-1 text-[11px] font-mono">
+                                    <div className="flex items-center gap-2">
+                                      <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] border transition-colors ${
+                                        isHighlighted
+                                          ? "bg-amber-500 text-white border-amber-600 animate-pulse"
+                                          : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200/50 dark:border-slate-700/50"
+                                      }`}>
+                                        Turn #{turnNumber}
+                                      </span>
+                                      <span className="text-slate-400 dark:text-slate-300 text-[10px]">
+                                        {new Date(turn.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                      </span>
+                                      {isHighlighted && (
+                                        <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-300 animate-bounce">
+                                          <LocateFixed className="w-3 h-3" />
+                                          <span>Target Turn</span>
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5">
+                                      {/* Star / Bookmark Button */}
+                                      <button
+                                        onClick={() => toggleBookmarkTurn(turn)}
+                                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-2sm border ${
+                                          isTurnBookmarked(turn.id)
+                                            ? "bg-amber-500/15 dark:bg-amber-400/15 text-amber-600 dark:text-amber-300 border-amber-500/40"
+                                            : "bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border-slate-200/60 dark:border-slate-700/60 hover:border-amber-400 hover:text-amber-500"
+                                        }`}
+                                        title={isTurnBookmarked(turn.id) ? "Remove bookmark for this turn" : "Star and bookmark this turn"}
+                                      >
+                                        <Star className={`w-3.5 h-3.5 ${isTurnBookmarked(turn.id) ? "fill-amber-400 text-amber-500" : ""}`} />
+                                        <span>{isTurnBookmarked(turn.id) ? "Bookmarked" : "Bookmark"}</span>
+                                      </button>
+
+                                      {/* Share Button (when bookmarked) */}
+                                      {isTurnBookmarked(turn.id) && (
+                                        <button
+                                          onClick={() => handleShareBookmarkedTurn(turn)}
+                                          className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-2sm border ${
+                                            sharedTurnId === turn.id
+                                              ? "bg-emerald-600 text-white border-emerald-600"
+                                              : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200/60 dark:border-slate-700/60 hover:text-emerald-600 dark:hover:text-emerald-400 hover:border-emerald-500/40"
+                                          }`}
+                                          title="Share this bookmarked transcript turn via Web Share API"
+                                        >
+                                          {sharedTurnId === turn.id ? (
+                                            <>
+                                              <Check className="w-3.5 h-3.5 text-white" />
+                                              <span>Shared!</span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Share2 className="w-3.5 h-3.5" />
+                                              <span>Share</span>
+                                            </>
+                                          )}
+                                        </button>
+                                      )}
+
+                                      {/* Save Clip Button */}
+                                      <button
+                                        onClick={() => handleSaveTurnClip(turn, originalIndex !== -1 ? originalIndex : idx)}
+                                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-2sm border ${
+                                          savedClipIndex === (originalIndex !== -1 ? originalIndex : idx)
+                                            ? "bg-emerald-600 text-white border-emerald-600"
+                                            : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 hover:border-emerald-500/60 active:scale-95"
+                                        }`}
+                                        title="Extract and save audio snippet for this turn as a WAV download"
+                                      >
+                                        {savedClipIndex === (originalIndex !== -1 ? originalIndex : idx) ? (
+                                          <>
+                                            <CheckCheck className="w-3.5 h-3.5 text-white" />
+                                            <span>Clip Saved!</span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                                            <span>Save Clip</span>
+                                          </>
+                                        )}
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-stretch">
+                                    {/* Left Side: Original Native Language */}
+                                    <div className="p-3 rounded-xl border border-slate-200/50 dark:border-slate-850 bg-slate-100/30 dark:bg-slate-900/10 flex flex-col gap-1.5 justify-between">
+                                      <p className="text-slate-700 dark:text-slate-200 leading-relaxed font-sans text-sm font-medium">
+                                        {transcriptSearchQuery.trim()
+                                          ? splitTextByKeyword(turn.originalText, transcriptSearchQuery).map((chunk, cIdx) =>
+                                              chunk.isMatch ? (
+                                                <mark
+                                                  key={cIdx}
+                                                  className="bg-amber-300/70 dark:bg-amber-400/30 text-slate-900 dark:text-amber-200 px-0.5 rounded font-bold"
+                                                >
+                                                  {chunk.text}
+                                                </mark>
+                                              ) : (
+                                                <span key={cIdx}>{chunk.text}</span>
+                                              )
+                                            )
+                                          : turn.originalText}
+                                      </p>
+                                      <div className="flex items-center justify-between text-[9px] text-slate-400 dark:text-slate-300 font-mono border-t border-slate-100/50 dark:border-slate-800/20 pt-1.5 mt-0.5">
+                                        <span className="font-bold tracking-wider uppercase">NATIVE STREAM</span>
+                                      </div>
+                                    </div>
+
+                                    {/* Right Side: Translation */}
+                                    <div className="p-3 rounded-xl border border-emerald-500/12 dark:border-emerald-500/10 bg-emerald-500/[0.015] dark:bg-emerald-500/[0.01] flex flex-col gap-1.5 justify-between">
+                                      <p className="text-emerald-900 dark:text-emerald-300 leading-relaxed font-sans text-sm font-semibold">
+                                        {transcriptSearchQuery.trim()
+                                          ? splitTextByKeyword(turn.translatedText, transcriptSearchQuery).map((chunk, cIdx) =>
+                                              chunk.isMatch ? (
+                                                <mark
+                                                  key={cIdx}
+                                                  className="bg-emerald-300/70 dark:bg-emerald-400/30 text-emerald-950 dark:text-emerald-100 px-0.5 rounded font-bold"
+                                                >
+                                                  {chunk.text}
+                                                </mark>
+                                              ) : (
+                                                <span key={cIdx}>{chunk.text}</span>
+                                              )
+                                            )
+                                          : turn.translatedText}
+                                      </p>
+                                      <div className="flex items-center justify-between text-[9px] text-emerald-600 dark:text-emerald-400/90 font-mono border-t border-emerald-500/5 dark:border-emerald-500/5 pt-1.5 mt-0.5">
+                                        <span className="font-bold tracking-wider uppercase">Interpreted ({liveTargetLang})</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </>
+                        )}
+
+                        {/* Incoming Live Decoding Stream (User & Model Side by Side) */}
+                        {(!transcriptSearchQuery.trim() ||
+                          (liveState.userTranscript && liveState.userTranscript.toLowerCase().includes(transcriptSearchQuery.toLowerCase().trim())) ||
+                          (liveState.modelTranscript && liveState.modelTranscript.toLowerCase().includes(transcriptSearchQuery.toLowerCase().trim()))) &&
+                          (liveState.userTranscript || liveState.modelTranscript) && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs items-stretch">
+                              {/* Left: Original decoding live stream */}
+                              <div className="p-3 rounded-xl border border-dashed border-slate-300/85 dark:border-slate-800 bg-slate-50/10 dark:bg-slate-900/5 flex flex-col gap-2 justify-between">
+                                <p className="text-slate-500 dark:text-slate-400 leading-relaxed font-sans text-sm italic">
+                                  {liveState.userTranscript ? `"${liveState.userTranscript}"` : "Listening for active speech segments..."}
+                                </p>
+                                <div className="flex items-center justify-between text-[9px] text-slate-400 dark:text-slate-300 font-mono border-t border-dashed border-slate-200/50 dark:border-slate-800/20 pt-1.5">
+                                  <span className="flex items-center gap-1.5 font-bold uppercase tracking-wider">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                                    DETECTOR
+                                  </span>
+                                  {liveState.userTranscript && (
+                                    <span className="text-amber-500 font-bold tracking-widest animate-pulse">DECODING...</span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Right: Model translating live stream */}
+                              <div className="p-3 rounded-xl border border-dashed border-emerald-500/20 bg-emerald-500/[0.015] dark:bg-emerald-500/[0.005] flex flex-col gap-2 justify-between">
+                                <p className="text-emerald-600/80 dark:text-emerald-400/80 leading-relaxed font-sans text-sm italic">
+                                  {liveState.modelTranscript ? `"${liveState.modelTranscript}"` : `Translating live to ${liveTargetLang}...`}
+                                </p>
+                                <div className="flex items-center justify-between text-[9px] text-emerald-500 font-mono border-t border-dashed border-emerald-500/10 pt-1.5">
+                                  <span className="flex items-center gap-1.5 font-bold uppercase tracking-wider">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                    INTELLIGENCE
+                                  </span>
+                                  {liveState.modelTranscript && (
+                                    <span className="text-emerald-500 font-bold tracking-wide animate-pulse uppercase">TRANSLATING...</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
                           )}
-                        </div>
-                      </div>
 
-                      {/* Right: Model translating live stream */}
-                      <div className="p-3 rounded-xl border border-dashed border-emerald-500/20 bg-emerald-500/[0.015] dark:bg-emerald-500/[0.005] flex flex-col gap-2 justify-between">
-                        <p className="text-emerald-600/80 dark:text-emerald-400/80 leading-relaxed font-sans text-sm italic">
-                          {liveState.modelTranscript ? `"${liveState.modelTranscript}"` : `Translating live to ${liveTargetLang}...`}
-                        </p>
-                        <div className="flex items-center justify-between text-[9px] text-emerald-500 font-mono border-t border-dashed border-emerald-500/10 pt-1.5">
-                          <span className="flex items-center gap-1.5 font-bold uppercase tracking-wider">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                            INTELLIGENCE
-                          </span>
-                          {liveState.modelTranscript && (
-                            <span className="text-emerald-500 font-bold tracking-wide animate-pulse uppercase">TRANSLATING...</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                        {/* Empty state when session is active but waiting for first speech */}
+                        {liveState.turns.length === 0 && !liveState.userTranscript && !liveState.modelTranscript && (
+                          <div className="flex flex-col items-center justify-center py-10 text-center text-slate-400 dark:text-slate-300">
+                            <ScrollText className="w-9 h-9 opacity-40 mb-2 animate-pulse" style={{ animationDuration: '3s' }} />
+                            <p className="text-xs font-semibold uppercase tracking-wider font-mono">Listening to active broadcast frequencies...</p>
+                            <p className="text-[10px] opacity-75 mt-1 max-w-md">Captured audio captions & simultaneous translations will flow into this dual-channel side-by-side display panel in real-time.</p>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
 
-                  {/* Empty state when session is active but waiting for first speech */}
-                  {liveState.turns.length === 0 && !liveState.userTranscript && !liveState.modelTranscript && (
-                    <div className="flex flex-col items-center justify-center py-10 text-center text-slate-400 dark:text-slate-300">
-                      <ScrollText className="w-9 h-9 opacity-40 mb-2 animate-pulse" style={{ animationDuration: '3s' }} />
-                      <p className="text-xs font-semibold uppercase tracking-wider font-mono">Listening to active broadcast frequencies...</p>
-                      <p className="text-[10px] opacity-75 mt-1 max-w-md">Captured audio captions & simultaneous translations will flow into this dual-channel side-by-side display panel in real-time.</p>
+                  {/* SAVED BOOKMARKS FILTER VIEW */}
+                  {transcriptViewFilter === "bookmarks" && (
+                    <div className="flex flex-col gap-3">
+                      {/* Search Input for Bookmarks */}
+                      {bookmarkedTurns.length > 1 && (
+                        <div className="relative mb-1">
+                          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            value={bookmarkSearchQuery}
+                            onChange={(e) => setBookmarkSearchQuery(e.target.value)}
+                            placeholder="Filter saved bookmarks by keyword or station..."
+                            className="w-full pl-8 pr-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-lg text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+                      )}
+
+                      {bookmarkedTurns.filter((turn) => {
+                        if (!bookmarkSearchQuery.trim()) return true;
+                        const q = bookmarkSearchQuery.toLowerCase();
+                        return (
+                          turn.originalText.toLowerCase().includes(q) ||
+                          turn.translatedText.toLowerCase().includes(q) ||
+                          (turn.stationName && turn.stationName.toLowerCase().includes(q))
+                        );
+                      }).length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-10 text-center text-slate-400 dark:text-slate-300 bg-white/40 dark:bg-slate-900/20 rounded-xl border border-dashed border-slate-200 dark:border-slate-800/60 p-6">
+                          <Star className="w-9 h-9 text-amber-400/60 mb-2 animate-bounce" style={{ animationDuration: '3s' }} />
+                          <p className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider font-mono">
+                            {bookmarkSearchQuery ? "No matching bookmarks found" : "No Saved Bookmarks Yet"}
+                          </p>
+                          <p className="text-[11px] text-slate-400 dark:text-slate-400 mt-1 max-w-sm">
+                            {bookmarkSearchQuery
+                              ? "Try adjusting your search query or view all broadcast logs."
+                              : "Click the ⭐ Bookmark button on any translation turn in the live feed to save key quotes, news highlights, and phrases."}
+                          </p>
+                        </div>
+                      ) : (
+                        bookmarkedTurns
+                          .filter((turn) => {
+                            if (!bookmarkSearchQuery.trim()) return true;
+                            const q = bookmarkSearchQuery.toLowerCase();
+                            return (
+                              turn.originalText.toLowerCase().includes(q) ||
+                              turn.translatedText.toLowerCase().includes(q) ||
+                              (turn.stationName && turn.stationName.toLowerCase().includes(q))
+                            );
+                          })
+                          .map((turn) => (
+                            <div
+                              key={turn.id}
+                              className="flex flex-col gap-2 p-3.5 rounded-xl border border-amber-500/20 dark:border-amber-500/15 bg-amber-500/[0.02] dark:bg-amber-500/[0.01] text-xs shadow-2sm"
+                            >
+                              <div className="flex items-center justify-between text-[11px] font-mono">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 font-bold text-[10px] border border-amber-500/20 flex items-center gap-1">
+                                    <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-500" />
+                                    <span>{turn.stationName || "Radio Station"}</span>
+                                  </span>
+                                  {turn.targetLanguage && (
+                                    <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold text-[10px] border border-emerald-500/20">
+                                      {turn.targetLanguage}
+                                    </span>
+                                  )}
+                                  <span className="text-slate-400 dark:text-slate-400 text-[10px]">
+                                    {new Date(turn.timestamp).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {/* Jump to Context Button */}
+                                  <button
+                                    onClick={() => handleJumpToContext(turn.id)}
+                                    className="p-1 px-2.5 rounded-lg text-xs font-semibold bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-300 hover:text-sky-700 dark:hover:text-sky-200 transition-all cursor-pointer flex items-center gap-1 border border-sky-500/30 hover:border-sky-500/50 shadow-2sm"
+                                    title="Jump to original location in full transcript feed"
+                                    id={`btn_jump_context_${turn.id}`}
+                                  >
+                                    <LocateFixed className="w-3 h-3 text-sky-500" />
+                                    <span>Jump to Context</span>
+                                  </button>
+
+                                  {/* Share Button */}
+                                  <button
+                                    onClick={() => handleShareBookmarkedTurn(turn)}
+                                    className={`p-1 px-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 border shadow-2sm ${
+                                      sharedTurnId === turn.id
+                                        ? "bg-emerald-600 text-white border-emerald-600"
+                                        : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 hover:border-emerald-500/40 border-slate-200 dark:border-slate-800"
+                                    }`}
+                                    title="Share this bookmarked transcript turn via Web Share API"
+                                  >
+                                    {sharedTurnId === turn.id ? (
+                                      <>
+                                        <Check className="w-3 h-3 text-white" />
+                                        <span>Shared!</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Share2 className="w-3 h-3" />
+                                        <span>Share</span>
+                                      </>
+                                    )}
+                                  </button>
+
+                                  <button
+                                    onClick={() => toggleBookmarkTurn(turn)}
+                                    className="p-1 px-2.5 rounded-lg text-xs font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-300 hover:bg-rose-500/10 hover:text-rose-500 transition-all cursor-pointer flex items-center gap-1 border border-amber-500/30 hover:border-rose-500/30"
+                                    title="Remove from saved bookmarks"
+                                  >
+                                    <Star className="w-3 h-3 fill-amber-400 text-amber-500" />
+                                    <span>Saved</span>
+                                  </button>
+                                  <button
+                                    onClick={() => handleSaveTurnClip({
+                                      id: turn.id,
+                                      originalText: turn.originalText,
+                                      translatedText: turn.translatedText,
+                                      timestamp: new Date(turn.timestamp),
+                                      audioUrl: turn.audioUrl
+                                    }, 0)}
+                                    className="p-1 px-2.5 rounded-lg text-xs font-medium bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:text-emerald-500 transition-all cursor-pointer flex items-center gap-1 border border-slate-200 dark:border-slate-800"
+                                    title="Download audio clip"
+                                  >
+                                    <Download className="w-3 h-3" />
+                                    <span>Clip</span>
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-stretch mt-1">
+                                <div className="p-3 rounded-xl border border-slate-200/50 dark:border-slate-850 bg-slate-100/30 dark:bg-slate-900/10 flex flex-col gap-1.5 justify-between">
+                                  <p className="text-slate-700 dark:text-slate-200 leading-relaxed font-sans text-sm font-medium">
+                                    {turn.originalText}
+                                  </p>
+                                  <div className="flex items-center justify-between text-[9px] text-slate-400 dark:text-slate-400 font-mono border-t border-slate-100/50 dark:border-slate-800/20 pt-1.5 mt-0.5">
+                                    <span className="font-bold tracking-wider uppercase">NATIVE BROADCAST</span>
+                                  </div>
+                                </div>
+
+                                <div className="p-3 rounded-xl border border-emerald-500/12 dark:border-emerald-500/10 bg-emerald-500/[0.015] dark:bg-emerald-500/[0.01] flex flex-col gap-1.5 justify-between">
+                                  <p className="text-emerald-900 dark:text-emerald-300 leading-relaxed font-sans text-sm font-semibold">
+                                    {turn.translatedText}
+                                  </p>
+                                  <div className="flex items-center justify-between text-[9px] text-emerald-600 dark:text-emerald-400/90 font-mono border-t border-emerald-500/5 dark:border-emerald-500/5 pt-1.5 mt-0.5">
+                                    <span className="font-bold tracking-wider uppercase">INTERPRETED ({turn.targetLanguage || liveTargetLang})</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))
+                      )}
                     </div>
                   )}
                 </div>
@@ -1248,35 +2074,103 @@ export default function App() {
             )}
           </section>
 
-          {/* World Map Container (Fitted size) */}
-          <section className="w-full">
-            <WorldMap
-              darkMode={darkMode}
-              onMapClick={handleMapLocationClick}
-              selectedProfile={selectedProfile}
-              loading={profileLoading}
-              selectedCoords={selectedCoords}
-              radiusKm={radiusKm}
-              setRadiusKm={setRadiusKm}
-              onRadiusChangeEnd={handleRadiusChangeEnd}
-              stations={availableStations}
-              activeStation={activeStation}
-              isPlaying={isPlaying}
-              onSelectStation={handleSelectStation}
-            />
-          </section>
+          {/* Primary View Switcher: Live Radio Airwaves vs. Live Podcast Shows */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-200/80 dark:border-slate-800 pb-3 pt-1">
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
+              <button
+                type="button"
+                onClick={() => setMainContentTab("radio")}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  mainContentTab === "radio"
+                    ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-700"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                }`}
+                id="tab_radio_airwaves"
+              >
+                <Radio className="w-4 h-4 text-emerald-500" />
+                <span>Live Radio Airwaves</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-slate-200/70 dark:bg-slate-700/60 text-slate-700 dark:text-slate-300">
+                  Global Map
+                </span>
+              </button>
 
-          {/* Radios catalog lists panel */}
-          <section className="flex-1">
-            <StationList
-              currentCountryProfile={selectedProfile}
-              onSelectStation={handleSelectStation}
-              activeStation={activeStation}
-              isPlaying={isPlaying}
-              isProfileLoading={profileLoading}
-              onStationsLoaded={setAvailableStations}
-            />
-          </section>
+              <button
+                type="button"
+                onClick={() => setMainContentTab("podcasts")}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  mainContentTab === "podcasts"
+                    ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs border border-slate-200/80 dark:border-slate-700"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                }`}
+                id="tab_live_podcasts"
+              >
+                <Mic className="w-4 h-4 text-emerald-500" />
+                <span>Live Podcast Shows</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold uppercase">
+                  Spoken Live
+                </span>
+              </button>
+            </div>
+
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono hidden md:flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>
+                {mainContentTab === "radio"
+                  ? "Interactive 3D Coordinates & Regional Frequencies"
+                  : "Continuous 24/7 Spoken Talk & Investigative Series"}
+              </span>
+            </div>
+          </div>
+
+          {/* Conditional Rendering based on selected tab */}
+          {mainContentTab === "radio" ? (
+            <>
+              {/* World Map Container (Fitted size) */}
+              <section className="w-full">
+                <WorldMap
+                  darkMode={darkMode}
+                  onMapClick={handleMapLocationClick}
+                  selectedProfile={selectedProfile}
+                  loading={profileLoading}
+                  selectedCoords={selectedCoords}
+                  radiusKm={radiusKm}
+                  setRadiusKm={setRadiusKm}
+                  onRadiusChangeEnd={handleRadiusChangeEnd}
+                  stations={availableStations}
+                  activeStation={activeStation}
+                  isPlaying={isPlaying}
+                  onSelectStation={handleSelectStation}
+                />
+              </section>
+
+              {/* Radios catalog lists panel */}
+              <section className="flex-1">
+                <StationList
+                  currentCountryProfile={selectedProfile}
+                  onSelectStation={handleSelectStation}
+                  activeStation={activeStation}
+                  isPlaying={isPlaying}
+                  isProfileLoading={profileLoading}
+                  onStationsLoaded={setAvailableStations}
+                />
+              </section>
+            </>
+          ) : (
+            /* Live Podcast Shows Directory & Showcase */
+            <section className="w-full flex-1">
+              <LivePodcastShows
+                onSelectPodcast={handleSelectStation}
+                activeStation={activeStation}
+                isPlaying={isPlaying}
+                onTriggerTranslation={() => {
+                  if (liveState.status !== "connected" && liveState.status !== "connecting") {
+                    toggleLiveTranslation();
+                  }
+                }}
+                liveTargetLang={liveTargetLang}
+              />
+            </section>
+          )}
 
         </div>
 
@@ -1290,11 +2184,51 @@ export default function App() {
           station={activeStation}
           isPlaying={isPlaying}
           setIsPlaying={setIsPlaying}
+          onShareSession={handleShareFullSession}
         />
       </footer>
 
+      {/* Open Source Standards, Documentation, FLOSS License & Security Modal */}
+      <ProjectInfoModal
+        isOpen={showProjectModal}
+        onClose={() => setShowProjectModal(false)}
+        darkMode={darkMode}
+        activeStationName={activeStation?.name}
+        activeStreamUrl={activeStation?.urlResolved || activeStation?.url}
+        initialTab={projectModalInitialTab}
+      />
 
+      {/* Broadcast Transcript Intelligence Summary Modal */}
+      <TranscriptSummaryModal
+        isOpen={isSummaryModalOpen}
+        onClose={() => setIsSummaryModalOpen(false)}
+        summary={summaryText}
+        isLoading={isSummarizing}
+        error={summaryError}
+        onRefresh={handleSummarizeTranscript}
+        turnsCount={summaryTurnsCount}
+        windowMinutes={10}
+        stationName={activeStation?.name || "Active Broadcast"}
+        targetLanguage={liveTargetLang}
+        isFallback={summaryIsFallback}
+      />
 
+      {/* Share Full Session Deep-Link Modal */}
+      <SessionShareModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        shareUrl={shareSessionUrl}
+        station={activeStation}
+        targetLanguage={liveTargetLang}
+        filters={{
+          tab: mainContentTab,
+          radiusKm,
+          selectedCoords,
+          country: selectedProfile?.country || activeStation?.country,
+          transcriptView: transcriptViewFilter,
+          transcriptSearch: transcriptSearchQuery,
+        }}
+      />
     </div>
   );
 }
