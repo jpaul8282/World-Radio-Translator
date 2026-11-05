@@ -1,0 +1,65 @@
+{
+  "name": "Remix: World Radio Translator",
+  "short_name": "WorldRadio",
+  "description": "Stream live radio broadcasts and continuous live podcast shows from anywhere in the world and translate spoken dialogues in real time using Gemini AI.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#0f172a",
+  "orientation": "any",
+  "categories": ["music", "news", "education", "utilities"],
+  "id": "com.remixradio.worldradiotranslator",
+  "icons": [
+    {
+      "src": "/src/assets/images/manual_world_map_1793898581604.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/src/assets/images/manual_world_map_1793898581604.jpg",
+      "sizes": "1920x1080",
+      "type": "image/jpeg",
+      "form_factor": "wide",
+      "label": "Interactive 3D Global Radio Map"
+    },
+    {
+      "src": "/src/assets/images/manual_translation_1793898593842.jpg",
+      "sizes": "1920x1080",
+      "type": "image/jpeg",
+      "form_factor": "wide",
+      "label": "Real-time Live Speech Translation Feed"
+    },
+    {
+      "src": "/src/assets/images/manual_scanner_alerts_1793898607258.jpg",
+      "sizes": "1920x1080",
+      "type": "image/jpeg",
+      "form_factor": "wide",
+      "label": "Background Airwaves Scanner & Custom Language Alerts"
+    },
+    {
+      "src": "/src/assets/images/manual_gmail_digest_1793898626688.jpg",
+      "sizes": "1920x1080",
+      "type": "image/jpeg",
+      "form_factor": "wide",
+      "label": "Gmail Broadcast Digest & Intelligence Sharing"
+    },
+    {
+      "src": "/src/assets/images/manual_diagnostics_playstore_1793898639802.jpg",
+      "sizes": "1920x1080",
+      "type": "image/jpeg",
+      "form_factor": "wide",
+      "label": "Play Store Diagnostics & Symbol Verification"
+    }
+  ],
+  "related_applications": [
+    {
+      "platform": "play",
+      "url": "https://play.google.com/store/apps/details?id=com.remixradio.worldradiotranslator",
+      "id": "com.remixradio.worldradiotranslator"
+    }
+  ],
+  "prefer_related_applications": false
+}

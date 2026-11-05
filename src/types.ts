@@ -154,3 +154,43 @@ export interface SatelliteUplinkState {
   wifiNoiseReduction: boolean;
 }
 
+export interface LanguageAlertRule {
+  id: string;
+  targetLanguage: string; // e.g. "Spanish", "Japanese", "Arabic", "French", "German"
+  label?: string; // Optional user label
+  enabled: boolean;
+  minConfidence: number; // 0.0 - 1.0 (default 0.70)
+  notifyToast: boolean; // In-app toast notification
+  notifySound: boolean; // Synthesized radio chime tone
+  autoTune: boolean; // Automatically switch station when detected
+  lastTriggered?: number; // epoch ms
+  triggerCount: number;
+  createdAt: number;
+}
+
+export interface LanguageAlertTrigger {
+  id: string;
+  ruleId: string;
+  language: string;
+  stationuuid: string;
+  stationName: string;
+  stationCountry?: string;
+  streamUrl: string;
+  confidence: number;
+  timestamp: number; // epoch ms
+  snippet?: string;
+  source: 'background_scanner' | 'live_stream' | 'station_metadata';
+}
+
+export interface BackgroundScannerStatus {
+  isScanning: boolean;
+  currentStationIndex: number;
+  scannedStationName: string | null;
+  scannedStationUuid: string | null;
+  lastScanTime: number | null;
+  scanIntervalSeconds: number; // e.g. 15s or 30s
+  totalScannedCount: number;
+  matchCount: number;
+  scanMode: 'filtered_list' | 'global_random' | 'favorites';
+}
+
