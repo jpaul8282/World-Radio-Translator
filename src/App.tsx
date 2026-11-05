@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Info, ShieldAlert, Radio, Sparkles, Share2, Check, Mic, MicOff, Languages, Volume2, RefreshCw, ScrollText, Copy, Trash2, Download, CheckCheck, Sun, Moon, Wand2, ArrowRight, X, Globe, LogIn, LogOut, User as UserIcon, Database, Star, Bookmark, Search, LocateFixed, ArrowDownLeft, ShieldCheck, Scale, FileJson } from "lucide-react";
+import { Info, ShieldAlert, Radio, Sparkles, Share2, Check, Mic, MicOff, Languages, Volume2, RefreshCw, ScrollText, Copy, Trash2, Download, CheckCheck, Sun, Moon, Wand2, ArrowRight, X, Globe, LogIn, LogOut, User as UserIcon, Database, Star, Bookmark, Search, LocateFixed, ArrowDownLeft, ShieldCheck, Scale, FileJson, Mail } from "lucide-react";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 
@@ -13,6 +13,7 @@ import LivePodcastShows from "./components/LivePodcastShows";
 import { ProjectInfoModal } from "./components/ProjectInfoModal";
 import { TranscriptSummaryModal } from "./components/TranscriptSummaryModal";
 import { SessionShareModal } from "./components/SessionShareModal";
+import { GmailModal } from "./components/GmailModal";
 import { RadioStation, LocationGeoProfile, LanguageDetectionResult, LanguageEncounterEvent, BookmarkedTurn } from "./types";
 import { LiveTranslateClient, LiveTranslateState, LiveTranslateTurn, encodeWAV } from "./services/liveTranslateClient";
 import { filterTranscriptTurns, splitTextByKeyword, getTurnsForSummaryWindow } from "./lib/transcriptUtils";
@@ -775,6 +776,7 @@ export default function App() {
 
   // Broadcast transcript summarization states
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
+  const [isGmailModalOpen, setIsGmailModalOpen] = useState(false);
   const [summaryText, setSummaryText] = useState<string | null>(null);
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
@@ -1140,6 +1142,18 @@ export default function App() {
               <span className="font-mono text-[10px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-800 dark:text-emerald-200">
                 v1.2.0
               </span>
+            </button>
+
+            {/* Gmail Workspace Hub Button */}
+            <button
+              type="button"
+              id="btn_open_gmail_header"
+              onClick={() => setIsGmailModalOpen(true)}
+              className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-red-500/50 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-2 shadow-xs transition-all active:scale-95 cursor-pointer"
+              title="Open Gmail (Send broadcast digest, drafts & email history)"
+            >
+              <Mail className="w-3.5 h-3.5 text-red-500" />
+              <span className="hidden sm:inline">Gmail</span>
             </button>
 
             {/* Firebase Authentication Controls */}
@@ -1607,6 +1621,17 @@ export default function App() {
                           <span className="font-semibold">Share Full Session</span>
                         </>
                       )}
+                    </button>
+
+                    {/* Email via Gmail Button */}
+                    <button
+                      id="btn-email-session-gmail"
+                      onClick={() => setIsGmailModalOpen(true)}
+                      title="Email live broadcast digest and translations via Gmail"
+                      className="p-1 px-2.5 rounded-lg text-[11px] font-medium transition-all flex items-center gap-1.5 cursor-pointer shadow-2sm bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 text-slate-700 dark:text-slate-200 hover:text-red-600 dark:hover:text-red-400 hover:border-red-300 dark:hover:border-red-700/60 hover:bg-red-50/40 dark:hover:bg-slate-800/60"
+                    >
+                      <Mail className="w-3 h-3 text-red-500" />
+                      <span className="font-semibold">Email via Gmail</span>
                     </button>
 
                     {transcriptViewFilter === "all" ? (
@@ -2211,6 +2236,7 @@ export default function App() {
         stationName={activeStation?.name || "Active Broadcast"}
         targetLanguage={liveTargetLang}
         isFallback={summaryIsFallback}
+        onEmailViaGmail={() => setIsGmailModalOpen(true)}
       />
 
       {/* Share Full Session Deep-Link Modal */}
@@ -2228,6 +2254,16 @@ export default function App() {
           transcriptView: transcriptViewFilter,
           transcriptSearch: transcriptSearchQuery,
         }}
+      />
+
+      {/* Gmail Workspace Hub Modal */}
+      <GmailModal
+        isOpen={isGmailModalOpen}
+        onClose={() => setIsGmailModalOpen(false)}
+        activeStation={activeStation}
+        activeTargetLanguage={liveTargetLang}
+        transcriptTurns={liveState.turns}
+        latestSummary={summaryText}
       />
     </div>
   );

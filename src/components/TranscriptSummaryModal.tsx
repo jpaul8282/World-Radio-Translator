@@ -10,7 +10,8 @@ import {
   Clock,
   ListFilter,
   AlertCircle,
-  FileText
+  FileText,
+  Mail,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -26,6 +27,7 @@ interface TranscriptSummaryModalProps {
   stationName: string;
   targetLanguage: string;
   isFallback?: boolean;
+  onEmailViaGmail?: () => void;
 }
 
 export const TranscriptSummaryModal: React.FC<TranscriptSummaryModalProps> = ({
@@ -40,6 +42,7 @@ export const TranscriptSummaryModal: React.FC<TranscriptSummaryModalProps> = ({
   stationName,
   targetLanguage,
   isFallback = false,
+  onEmailViaGmail,
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -304,6 +307,23 @@ export const TranscriptSummaryModal: React.FC<TranscriptSummaryModalProps> = ({
                 <Download className="w-3.5 h-3.5 text-slate-500" />
                 <span>Download TXT</span>
               </button>
+
+              {onEmailViaGmail && (
+                <button
+                  type="button"
+                  id="btn_summary_email_gmail"
+                  onClick={() => {
+                    onClose();
+                    onEmailViaGmail();
+                  }}
+                  disabled={!summary || isLoading}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors flex items-center gap-1.5 shadow-2sm disabled:opacity-50 cursor-pointer"
+                  title="Email this summary and broadcast transcript via Gmail"
+                >
+                  <Mail className="w-3.5 h-3.5 text-red-500" />
+                  <span>Email via Gmail</span>
+                </button>
+              )}
             </div>
 
             <button
