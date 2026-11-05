@@ -16,6 +16,12 @@
 
 - [Project Overview](#-project-overview)
 - [System Architecture & Audio Pipeline](#-system-architecture--audio-pipeline)
+- [Visual User Guide & Application Walkthrough (5 Core Workflows)](#-visual-user-guide--application-walkthrough-5-core-workflows)
+  - [1. App Instructions & Live Stream Tuning via Interactive Globe](#1-app-instructions--live-stream-tuning-via-interactive-globe)
+  - [2. Gemini Live Real-Time Speech Translation & Dual Subtitles](#2-gemini-live-real-time-speech-translation--dual-subtitles)
+  - [3. Account Settings, Google Profile & Firebase Cloud Sync](#3-account-settings-google-profile--firebase-cloud-sync)
+  - [4. Regional & Country Airwaves Discovery](#4-regional--country-airwaves-discovery)
+  - [5. Background Airwaves Scanner, Custom Language Alerts & Session Export](#5-background-airwaves-scanner-custom-language-alerts--session-export)
 - [Key Features & Capabilities](#-key-features--capabilities)
   - [1. Global Live Radio Airwaves & Interactive Globe](#1-global-live-radio-airwaves--interactive-globe)
   - [2. Live Podcast Shows Directory](#2-live-podcast-shows-directory)
@@ -93,6 +99,114 @@ The application features a low-latency, resilient audio pipeline bridging browse
   |  [ Real-Time Multilingual Transcript Turns (Original & Translated) ]    |
   +-------------------------------------------------------------------------+
 ```
+
+---
+
+## 📱 Visual User Guide & Application Walkthrough (5 Core Workflows)
+
+This section provides complete user instructions for operating **Remix: World Radio Translator**, configuring your **Account Settings & Cloud Sync**, and navigating **Regional & Country** airwaves with illustrated walkthrough images.
+
+---
+
+### 1. App Instructions & Live Stream Tuning via Interactive Globe
+
+![1. App Instructions & Live Stream Tuning](src/assets/images/guide_radio_tuning_map_1793902826836.jpg)
+
+#### Overview & Step-by-Step Instructions:
+1. **Interactive 3D Holographic Globe**:
+   - Click and drag across the glowing globe to pan through global regions (Europe, Americas, Asia, Africa, Oceania).
+   - Each radiant pulsing node represents an active terrestrial FM/AM transmitter or digital internet broadcast stream.
+   - Click any station pin directly on the globe to inspect the broadcaster metadata, frequency, city, and country.
+2. **Starting & Pausing Live Playback**:
+   - Click the central **Play/Pause** button in the bottom dock or select any station from the discovery list.
+   - Audio is streamed through the server-side SSRF-hardened relay (`/api/proxy-stream`) with automatic CORS injection and DNS rebinding protection.
+3. **Volume & Audio Spectrum Visualizer**:
+   - Adjust output volume smoothly using the slider or keyboard shortcuts.
+   - The real-time canvas visualizer renders responsive frequency spectrum waveforms directly from the Web Audio `AnalyserNode`.
+4. **Terrestrial Radio vs. Continuous Spoken Podcasts**:
+   - Use the top navigation bar to toggle between **Live Radio** and **24/7 Spoken Podcasts** (BBC Global News, NPR Up First, Deutsche Welle, NHK Japan).
+5. **Neural SpaceMesh Satellite Uplink**:
+   - Toggle the **SpaceMesh** button in the header to route your audio streams through simulated orbital satellite relays (LEO, MEO, GEO) with low-latency WiFi noise cancellation.
+
+---
+
+### 2. Gemini Live Real-Time Speech Translation & Dual Subtitles
+
+![2. Real-Time Gemini Live Translation](src/assets/images/guide_live_translation_1793902839769.jpg)
+
+#### Overview & Step-by-Step Instructions:
+1. **Activating the Live Interpreter**:
+   - Click **"Start Live Translation"** in the Interpreter control bar. The app initiates a low-latency 16 kHz 16-bit mono PCM audio pipeline over WebSocket to the Google Gemini Live API (`gemini-3.5-live-translate-preview`).
+2. **Selecting Target Language**:
+   - Choose from over 50 supported global languages (English, Spanish, French, German, Japanese, Hindi, Mandarin, Arabic, Portuguese, etc.) using the target language dropdown.
+3. **Smart Language Detection**:
+   - The neural language detection engine dynamically analyzes incoming spoken dialogue.
+   - If the broadcaster changes languages or speaks a dialect different from your target, a suggestion banner appears with a 1-click button to tune your target language.
+4. **Dual-Channel Live Subtitles**:
+   - **Left Column**: Displays the captured original spoken foreign dialogue with speaker turns and timestamps.
+   - **Right Column**: Displays the simultaneous real-time translation powered by Gemini Live AI.
+5. **Transcript Keyword Search & Highlighting**:
+   - Filter through historical turns by entering terms into the transcript search bar with instantaneous bilingual case-insensitive matching and emerald highlight tags.
+6. **Star Bookmarking & Jump to Context**:
+   - Click the star icon on any turn to save notable quotes. In the "Saved Bookmarks" tab, click **"Jump to Context"** to smoothly scroll directly to that turn in the full live feed.
+
+---
+
+### 3. Account Settings, Google Profile & Firebase Cloud Sync
+
+![3. Account Settings & Firebase Cloud Sync](src/assets/images/guide_account_settings_1793902852776.jpg)
+
+#### Overview & Step-by-Step Instructions:
+1. **Google Account Authentication**:
+   - Sign in with your Google account via Firebase Authentication (`userConfirmedInUI: true`).
+   - Your authenticated profile picture, display name, and user email (`westerveldjp@gmail.com`) are displayed in the account badge.
+2. **Firebase Cloud Sync Status**:
+   - The green status indicator confirms that your favorite stations, saved quote bookmarks, and custom scanner alert rules are continuously synchronized with Google Cloud Firestore (`ai-studio-remixworldradiot-28a8ed3a-4334-4619-a1bf-dff6e3de5527`).
+   - Click **"Sync Now"** at any time to force an immediate cloud sync snapshot across all your connected mobile and desktop devices.
+3. **User Preferences & Audio Buffer Customization**:
+   - **Appearance**: Toggle between Dark Mode and Light Mode with theme color palettes.
+   - **Audio Buffer Latency Slider**: Customize audio buffering from ultra-low latency (12 ms / 64 samples) for rapid speech recognition up to 256 samples for unstable or jittery network conditions.
+   - **Audio Notification Chimes**: Toggle synthesized radio frequency notification chimes when custom language alerts trigger in the background.
+   - **Session History & Retention**: Select history retention (e.g. store last 30 days or clear history with a single click).
+
+---
+
+### 4. Regional & Country Airwaves Discovery
+
+![4. Regional & Country Airwaves Discovery](src/assets/images/guide_region_country_filter_1793902865907.jpg)
+
+#### Overview & Step-by-Step Instructions:
+1. **Continent & Region Selector Tabs**:
+   - Switch between **Europe**, **Americas**, **Asia**, **Africa**, and **Oceania** tabs to explore regional broadcast ecosystems.
+2. **Country Selection Dropdown**:
+   - Filter stations by individual countries featuring national flags and ISO country codes (e.g., France 🇫🇷, Germany 🇩🇪, Italy 🇮🇹, Spain 🇪🇸, United Kingdom 🇬🇧, Japan 🇯🇵, Brazil 🇧🇷).
+   - Selecting a country filters the station catalog to show verified broadcasters, official languages, and cultural trivia.
+3. **GPS Vicinity Radius Slider**:
+   - Adjust the radial scanning slider between **200 km and 2,000 km**.
+   - Click **"Detect My Location"** or click on any point on the world map to calculate Great Circle distances and discover nearby municipal and regional stations.
+4. **Broadcaster Badges & Frequency Tags**:
+   - Each station card presents frequency identifiers (e.g., `FM 105.3 MHz`), streaming codec badges (`MP3`, `AAC`), bitrates (`128 kbps`, `320 kbps`), and broadcast genre tags (`News`, `Talk`, `Jazz`, `Culture`).
+
+---
+
+### 5. Background Airwaves Scanner, Custom Language Alerts & Session Export
+
+![5. Background Airwaves Scanner & Language Alert Toasts](src/assets/images/guide_alerts_scanner_export_1793902881339.jpg)
+
+#### Overview & Step-by-Step Instructions:
+1. **Background Airwaves Scanner**:
+   - Toggle the background scanner on to autonomously probe regional and international stations for specific spoken languages while you continue listening to your current broadcast.
+2. **Configuring Custom Language Alerts**:
+   - Select languages to monitor (e.g. Spanish, French, Japanese, German, Arabic).
+   - Set confidence threshold from 50% to 95%.
+   - When a station broadcasting in your target language is detected, an interactive radar toast notification appears showing the station name, country, and confidence match.
+   - Click **"Tune In & Translate"** on the toast to immediately switch playback and start translation.
+3. **10-Minute Rolling Broadcast Summarization**:
+   - Click **"Summarize (10m)"** (`#btn-summarize-transcript`) to trigger Gemini 3.8 Flash to synthesize the last 10 minutes of broadcast speech into an executive briefing with key topics, notable quotes, and cultural broadcaster context.
+4. **Save Full Session JSON (`#btn-save-full-session`)**:
+   - Export your entire listening session (station metadata, all transcript turns, star bookmarks, and detection events) as a standardized, OpenSSF-compliant JSON archive for offline research or language study.
+5. **Google Workspace Gmail Export**:
+   - Click **"Email via Gmail"** to open the Gmail broadcast digest modal. Preview rendered HTML digests with base64url compliance and dispatch them directly to colleagues or save to Gmail Drafts.
 
 ---
 

@@ -68,3 +68,40 @@ Welcome to **Remix: World Radio Translator**, your global gateway to streaming l
 3. **Save Full Session (JSON)**: Export your complete broadcast session (station metadata, transcript turns, bookmarks, and detection results) as a standalone OpenSSF-compliant JSON archive.
 4. **Deep-Link Session Sharing**: Generate deep-link URLs to invite friends and colleagues to listen and translate the same broadcast simultaneously.
 5. **OpenSSF Security Compliance**: Verified against all 19 criteria of the OpenSSF Best Practices badge with active HSTS, SSRF protection, and zero high/critical vulnerabilities.
+
+---
+
+## 📱 Visual Guide: App Instructions, Account Settings & Regional Airwaves
+
+This reference guide details the 5 foundational workflows illustrated in `README.md`:
+
+### 1. Interactive Globe & Stream Tuning
+![Interactive Globe & Radio Tuning](../src/assets/images/guide_radio_tuning_map_1793902826836.jpg)
+- **Tuning Frequencies**: Click on station nodes across continents. Audio streams through the Node.js SSRF proxy with CORS headers.
+- **Spectrum Visualizer**: Canvas-based real-time audio spectrum analyzer responding to live broadcasts.
+- **Radio vs. Podcasts**: Switch between live music stations and 24/7 spoken journalism shows (BBC, NPR, DW, NHK).
+
+### 2. Live Speech Translation & Dual Subtitles
+![Gemini Live Translation](../src/assets/images/guide_live_translation_1793902839769.jpg)
+- **Real-Time WebSocket Audio Pipeline**: Streams 16 kHz 16-bit mono PCM chunks directly to Google Gemini Live API.
+- **50+ Target Languages**: Live interpretation to Spanish, French, German, Japanese, Hindi, Mandarin, Arabic, etc.
+- **Dual-Channel Display**: Original foreign audio transcript on the left, translated text on the right.
+
+### 3. Account Settings, Google Profile & Firebase Cloud Sync
+![Account Settings & Firebase Sync](../src/assets/images/guide_account_settings_1793902852776.jpg)
+- **Google Authentication**: Single-click sign-in via Firebase Auth (`userConfirmedInUI: true`).
+- **Cloud Sync Status**: Automatic bidirectional synchronization with Firestore (`ai-studio-remixworldradiot-28a8ed3a-4334-4619-a1bf-dff6e3de5527`).
+- **Audio Preferences**: Fine-tune audio buffer latency (12 ms to 256 samples), alert chimes, dark mode, and retention rules.
+
+### 4. Regional & Country Airwaves Discovery
+![Region & Country Discovery](../src/assets/images/guide_region_country_filter_1793902865907.jpg)
+- **Continental Tabs**: Europe, Americas, Asia, Africa, and Oceania.
+- **Country Dropdown with Flags**: Filter by sovereign nations with official languages and verified broadcast streams.
+- **GPS Vicinity Radius (200-2000 km)**: Great Circle radial scanning for regional and municipal stations.
+
+### 5. Background Scanner, Language Alerts & Session Export
+![Background Scanner & Language Alerts](../src/assets/images/guide_alerts_scanner_export_1793902881339.jpg)
+- **Background Scanner**: Autonomous airwaves probing with configurable confidence thresholds.
+- **Custom Language Alert Toasts**: In-app radar toasts with 1-click "Tune In & Translate".
+- **Session Export & Gmail Digest**: Standalone JSON export (`#btn-save-full-session`) and Gmail RFC 2822 digest dispatch.
+

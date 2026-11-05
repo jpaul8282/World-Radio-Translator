@@ -41,6 +41,12 @@ import manualScannerAlertsImg from "../assets/images/manual_scanner_alerts_17938
 import manualGmailDigestImg from "../assets/images/manual_gmail_digest_1793898626688.jpg";
 import manualDiagnosticsPlaystoreImg from "../assets/images/manual_diagnostics_playstore_1793898639802.jpg";
 
+import guideRadioTuningMapImg from "../assets/images/guide_radio_tuning_map_1793902826836.jpg";
+import guideLiveTranslationImg from "../assets/images/guide_live_translation_1793902839769.jpg";
+import guideAccountSettingsImg from "../assets/images/guide_account_settings_1793902852776.jpg";
+import guideRegionCountryFilterImg from "../assets/images/guide_region_country_filter_1793902865907.jpg";
+import guideAlertsScannerExportImg from "../assets/images/guide_alerts_scanner_export_1793902881339.jpg";
+
 interface ProjectInfoModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -62,6 +68,7 @@ export const ProjectInfoModal: React.FC<ProjectInfoModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const [selectedPolicy, setSelectedPolicy] = useState<"service" | "data" | "privacy" | "radio">("service");
+  const [manualSubTab, setManualSubTab] = useState<"readme_guide" | "system_manual">("readme_guide");
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [bugReportCopied, setBugReportCopied] = useState<boolean>(false);
   const [anrTestRunning, setAnrTestRunning] = useState<boolean>(false);
@@ -367,7 +374,203 @@ export const ProjectInfoModal: React.FC<ProjectInfoModalProps> = ({
                   </button>
                 </div>
 
-                {/* Chapter 1: Global Airwaves Discovery */}
+                {/* Sub-tab navigation */}
+                <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
+                  <button
+                    type="button"
+                    onClick={() => setManualSubTab("readme_guide")}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      manualSubTab === "readme_guide"
+                        ? "bg-emerald-500 text-white shadow-sm"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    <BookOpen className="w-3.5 h-3.5" />
+                    <span>App Workflows & Settings Guide (5 Illustrated Steps)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setManualSubTab("system_manual")}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      manualSubTab === "system_manual"
+                        ? "bg-emerald-500 text-white shadow-sm"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>System Architecture & Play Store Manual</span>
+                  </button>
+                </div>
+
+                {manualSubTab === "readme_guide" ? (
+                  <div className="space-y-8">
+                    {/* 1. App Instructions & Live Stream Tuning via Interactive Globe */}
+                    <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850 space-y-3.5">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold text-xs flex items-center justify-center font-mono">
+                          1
+                        </span>
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                          App Instructions & Live Stream Tuning via Interactive Globe
+                        </h4>
+                      </div>
+                      <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-md">
+                        <img
+                          src={guideRadioTuningMapImg}
+                          alt="1. App Instructions & Live Stream Tuning via Interactive Globe"
+                          className="w-full h-auto object-cover max-h-84"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs text-slate-600 dark:text-slate-300">
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60">
+                          <strong className="block text-slate-900 dark:text-white font-semibold mb-1">Interactive Globe & Pins</strong>
+                          Drag to rotate the 3D globe. Radiant pins mark active terrestrial transmitters and online streams across all continents.
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60">
+                          <strong className="block text-slate-900 dark:text-white font-semibold mb-1">Playback & Spectrum Bar</strong>
+                          Click play/pause in the bottom dock or select any station. Audio is piped with live frequency spectrum visualization.
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60">
+                          <strong className="block text-slate-900 dark:text-white font-semibold mb-1">Radio & Podcast Modes</strong>
+                          Toggle between live music broadcasts and 24/7 spoken journalism podcasts (BBC, NPR, DW, NHK Japan).
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 2. Gemini Live Real-Time Speech Translation & Dual Subtitles */}
+                    <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850 space-y-3.5">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold text-xs flex items-center justify-center font-mono">
+                          2
+                        </span>
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                          Gemini Live Real-Time Speech Translation & Dual Subtitles
+                        </h4>
+                      </div>
+                      <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-md">
+                        <img
+                          src={guideLiveTranslationImg}
+                          alt="2. Gemini Live Real-Time Speech Translation & Dual Subtitles"
+                          className="w-full h-auto object-cover max-h-84"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs text-slate-600 dark:text-slate-300">
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60">
+                          <strong className="block text-slate-900 dark:text-white font-semibold mb-1">WebSocket AI Audio Pipeline</strong>
+                          16 kHz 16-bit mono PCM chunks stream over WebSocket directly to Google Gemini Live API for sub-second interpretation.
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60">
+                          <strong className="block text-slate-900 dark:text-white font-semibold mb-1">50+ Global Languages</strong>
+                          Target English, Spanish, French, German, Japanese, Hindi, Mandarin, Arabic, Portuguese, and more.
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60">
+                          <strong className="block text-slate-900 dark:text-white font-semibold mb-1">Dual Subtitles & Star Quotes</strong>
+                          Original spoken foreign words on left, translation on right. Search turns or click star to bookmark quotes.
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 3. Account Settings, Google Profile & Firebase Cloud Sync */}
+                    <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850 space-y-3.5">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold text-xs flex items-center justify-center font-mono">
+                          3
+                        </span>
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                          Account Settings, User Profile & Firebase Cloud Sync
+                        </h4>
+                      </div>
+                      <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-md">
+                        <img
+                          src={guideAccountSettingsImg}
+                          alt="3. Account Settings, User Profile & Firebase Cloud Sync"
+                          className="w-full h-auto object-cover max-h-84"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs text-slate-600 dark:text-slate-300">
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60">
+                          <strong className="block text-slate-900 dark:text-white font-semibold mb-1">Google & Firebase Auth</strong>
+                          Sign in with Google via Firebase Authentication. View connected email and user profile state securely.
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60">
+                          <strong className="block text-slate-900 dark:text-white font-semibold mb-1">Cloud Sync Status</strong>
+                          Bookmarks, favorite stations, and scanner alerts automatically sync with Firestore. Click "Sync Now" for instant backup.
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60">
+                          <strong className="block text-slate-900 dark:text-white font-semibold mb-1">Audio Buffer & Themes</strong>
+                          Fine-tune buffer latency (12ms to 256 samples), audio alert chimes, dark mode, and retention rules.
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 4. Regional & Country Airwaves Discovery */}
+                    <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850 space-y-3.5">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold text-xs flex items-center justify-center font-mono">
+                          4
+                        </span>
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                          Regional & Country Airwaves Discovery
+                        </h4>
+                      </div>
+                      <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-md">
+                        <img
+                          src={guideRegionCountryFilterImg}
+                          alt="4. Regional & Country Airwaves Discovery"
+                          className="w-full h-auto object-cover max-h-84"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs text-slate-600 dark:text-slate-300">
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60">
+                          <strong className="block text-slate-900 dark:text-white font-semibold mb-1">Continent Selector Tabs</strong>
+                          Switch seamlessly across Europe, Americas, Asia, Africa, and Oceania continental tabs.
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60">
+                          <strong className="block text-slate-900 dark:text-white font-semibold mb-1">Country Filters with Flags</strong>
+                          Select individual countries (France, Germany, Italy, Spain, UK, Japan, Brazil) with official broadcast profiles.
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60">
+                          <strong className="block text-slate-900 dark:text-white font-semibold mb-1">GPS Vicinity Radius (200-2000 km)</strong>
+                          Adjust radial slider to discover hyper-local FM transmitters near your detected or pinned coordinates.
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 5. Background Airwaves Scanner, Custom Language Alerts & Session Export */}
+                    <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850 space-y-3.5">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold text-xs flex items-center justify-center font-mono">
+                          5
+                        </span>
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                          Background Airwaves Scanner, Custom Language Alerts & Session Export
+                        </h4>
+                      </div>
+                      <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-md">
+                        <img
+                          src={guideAlertsScannerExportImg}
+                          alt="5. Background Airwaves Scanner, Custom Language Alerts & Session Export"
+                          className="w-full h-auto object-cover max-h-84"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs text-slate-600 dark:text-slate-300">
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60">
+                          <strong className="block text-slate-900 dark:text-white font-semibold mb-1">Custom Alert Toasts</strong>
+                          Set confidence thresholds (50%-95%). Radar toast notifies when target languages speak, with 1-click "Tune In & Translate".
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60">
+                          <strong className="block text-slate-900 dark:text-white font-semibold mb-1">10-Minute Rolling Brief</strong>
+                          Click "Summarize (10m)" to produce structured Gemini 3.8 Flash intelligence briefs with topics and notable quotes.
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60">
+                          <strong className="block text-slate-900 dark:text-white font-semibold mb-1">JSON & Gmail Export</strong>
+                          Export entire session as standardized JSON archive or dispatch formatted HTML digests directly via Gmail.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-8">
                 <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850 space-y-3.5">
                   <div className="flex items-center gap-2">
                     <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold text-xs flex items-center justify-center font-mono">
@@ -531,6 +734,8 @@ export const ProjectInfoModal: React.FC<ProjectInfoModalProps> = ({
                     </div>
                   </div>
                 </div>
+              </div>
+            )}
               </div>
             )}
 
