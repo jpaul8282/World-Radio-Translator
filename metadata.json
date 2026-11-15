@@ -1,7 +1,7 @@
 {
   "name": "Remix: World Radio Translator",
   "description": "Stream live radio broadcasts and continuous live podcast shows from anywhere in the world and translate spoken dialogues in real time using Gemini AI.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["microphone"],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]

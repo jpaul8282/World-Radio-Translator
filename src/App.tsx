@@ -16,6 +16,7 @@ import { SessionShareModal } from "./components/SessionShareModal";
 import { GmailModal } from "./components/GmailModal";
 import { LanguageAlertToast } from "./components/LanguageAlertToast";
 import { LanguageAlertsModal } from "./components/LanguageAlertsModal";
+import { MicTranscriberPanel } from "./components/MicTranscriberPanel";
 import { RadioStation, LocationGeoProfile, LanguageDetectionResult, LanguageEncounterEvent, BookmarkedTurn, LanguageAlertRule, LanguageAlertTrigger, BackgroundScannerStatus } from "./types";
 import { loadAlertRules, saveAlertRules, loadAlertHistory, saveAlertHistory, evaluateStationAlerts, playRadioChime } from "./services/languageAlertService";
 import { LiveTranslateClient, LiveTranslateState, LiveTranslateTurn, encodeWAV } from "./services/liveTranslateClient";
@@ -264,6 +265,7 @@ export default function App() {
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [profileLoading, setProfileLoading] = useState<boolean>(false);
   const [mainContentTab, setMainContentTab] = useState<"radio" | "podcasts">("radio");
+  const [isMicTranscriberOpen, setIsMicTranscriberOpen] = useState<boolean>(false);
   const [savedSessionFeedback, setSavedSessionFeedback] = useState<boolean>(false);
 
   // Deep-Link Full Session Sharing States
@@ -2365,6 +2367,14 @@ export default function App() {
               </div>
             )}
           </section>
+
+          {/* Microphone Speech-to-Text Transcriber (gemini-3.5-transcribe) */}
+          <MicTranscriberPanel
+            supportedLanguages={SUPPORTED_LANGUAGES}
+            liveTargetLang={liveTargetLang}
+            isOpen={isMicTranscriberOpen}
+            onToggleOpen={() => setIsMicTranscriberOpen((prev) => !prev)}
+          />
 
           {/* Primary View Switcher: Live Radio Airwaves vs. Live Podcast Shows */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-200/80 dark:border-slate-800 pb-3 pt-1">

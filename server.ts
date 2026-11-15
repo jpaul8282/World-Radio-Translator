@@ -1532,6 +1532,131 @@ Return ONLY valid JSON matching this schema.`;
   }
 });
 
+// 8. Microphone Audio Transcription Endpoint (gemini-3.5-transcribe)
+const aiTranscribe = new GoogleGenAI({
+  apiKey: GEMINI_API_KEY_TO_USE || "placeholder_key",
+  httpOptions: {
+    headers: {
+      'User-Agent': 'aistudio-build',
+    }
+  }
+});
+
+app.post("/api/transcribe-audio", async (req, res) => {
+  const { audioBase64, mimeType = "audio/webm", languageHint } = req.body || {};
+
+  if (!audioBase64 || typeof audioBase64 !== "string") {
+    return res.status(400).json({ error: "Missing required audioBase64 payload." });
+  }
+
+  if (!GEMINI_API_KEY_TO_USE || GEMINI_API_KEY_TO_USE === "placeholder_key") {
+    return res.status(500).json({
+      error: "Gemini API key is missing. Please configure GEMINI_API_KEY in Settings > Secrets."
+    });
+  }
+
+  // Strip optional data URI prefix and clean codec parameters from MIME type
+  const rawBase64 = audioBase64.includes(",")
+    ? audioBase64.slice(audioBase64.indexOf(",") + 1).trim()
+    : audioBase64.trim();
+
+  if (!rawBase64 || rawBase64.length < 16) {
+    return res.status(400).json({ error: "Recorded audio clip is empty or too short to transcribe." });
+  }
+
+  const cleanMimeType = String(mimeType || "audio/webm").split(";")[0].trim() || "audio/webm";
+  const allowedAudioPrefixes = ["audio/", "video/webm", "application/ogg"];
+  if (!allowedAudioPrefixes.some((prefix) => cleanMimeType.toLowerCase().startsWith(prefix))) {
+    return res.status(400).json({ error: `Unsupported audio MIME type: ${cleanMimeType}` });
+  }
+
+  const audioPart = {
+    inlineData: {
+      mimeType: cleanMimeType,
+      data: rawBase64,
+    },
+  };
+
+  const promptText =
+    languageHint && languageHint !== "Auto-detect"
+      ? `Transcribe this audio accurately in ${languageHint}. Return only the verbatim spoken transcript without extra commentary.`
+      : "Transcribe this audio accurately. Detect the spoken language automatically and return only the verbatim spoken transcript without extra commentary.";
+
+  const startTime = Date.now();
+  const maxAttempts = 3;
+  let lastError: any = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      console.log(`[Audio Transcribe] Requesting model "gemini-3.5-transcribe" (attempt ${attempt}/${maxAttempts}, mimeType=${cleanMimeType}, bytes~${Math.round((rawBase64.length * 3) / 4)})`);
+
+      const response = await aiTranscribe.models.generateContent({
+        model: "gemini-3.5-transcribe",
+        contents: { parts: [audioPart, { text: promptText }] },
+      });
+
+      const transcriptText = (response?.text || "").trim();
+      if (!transcriptText) {
+        return res.json({
+          transcript: "",
+          model: "gemini-3.5-transcribe",
+          mimeType: cleanMimeType,
+          languageHint: languageHint || "Auto-detect",
+          durationMs: Date.now() - startTime,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      return res.json({
+        transcript: transcriptText,
+        model: "gemini-3.5-transcribe",
+        mimeType: cleanMimeType,
+        languageHint: languageHint || "Auto-detect",
+        durationMs: Date.now() - startTime,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      lastError = err;
+      const errMsg = String(err?.message || err || "Unknown error");
+      const errLower = errMsg.toLowerCase();
+      const statusCode = Number(err?.code || err?.status || 0);
+
+      const isTransient =
+        statusCode === 503 ||
+        statusCode === 429 ||
+        errLower.includes("503") ||
+        errLower.includes("429") ||
+        errLower.includes("unavailable") ||
+        errLower.includes("high demand") ||
+        errLower.includes("rate limit");
+
+      console.warn(`[Audio Transcribe] Attempt ${attempt} failed for gemini-3.5-transcribe: ${errMsg}`);
+
+      if (isTransient && attempt < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+        continue;
+      }
+      break;
+    }
+  }
+
+  const finalMessage = String(lastError?.message || lastError || "Audio transcription failed.");
+  const httpStatus =
+    finalMessage.includes("403") || finalMessage.toLowerCase().includes("permission_denied")
+      ? 403
+      : finalMessage.includes("429") || finalMessage.toLowerCase().includes("resource_exhausted")
+      ? 429
+      : finalMessage.includes("400") || finalMessage.toLowerCase().includes("invalid")
+      ? 400
+      : finalMessage.includes("503") || finalMessage.toLowerCase().includes("unavailable")
+      ? 503
+      : 500;
+
+  return res.status(httpStatus).json({
+    error: `Transcription error (gemini-3.5-transcribe): ${finalMessage}`,
+  });
+});
+
 // Setup Vite & static assets
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {

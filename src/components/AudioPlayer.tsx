@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { RadioStation } from "../types";
-import { Play, Pause, Volume2, VolumeX, ShieldAlert, BadgeInfo, Disc3, Radio, Satellite, Wifi, Mic, Share2 } from "lucide-react";
+import { Play, Pause, Volume1, Volume2, VolumeX, ShieldAlert, BadgeInfo, Disc3, Radio, Satellite, Wifi, Mic, Share2 } from "lucide-react";
 import Hls from "hls.js";
 import { getOrCreateAudioPipeline } from "../lib/audioPipeline";
+
+const VOLUME_STORAGE_KEY = "wrt_audio_player_volume";
 
 interface AudioPlayerProps {
   station: RadioStation | null;
@@ -12,7 +14,20 @@ interface AudioPlayerProps {
 }
 
 export default function AudioPlayer({ station, isPlaying, setIsPlaying, onShareSession }: AudioPlayerProps) {
-  const [volume, setVolume] = useState(0.8);
+  const [volume, setVolume] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem(VOLUME_STORAGE_KEY);
+      if (saved !== null) {
+        const parsed = parseFloat(saved);
+        if (!Number.isNaN(parsed) && parsed >= 0 && parsed <= 1) {
+          return parsed;
+        }
+      }
+    } catch {
+      // ignore storage errors
+    }
+    return 0.8;
+  });
   const [isMuted, setIsMuted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
@@ -355,11 +370,21 @@ export default function AudioPlayer({ station, isPlaying, setIsPlaying, onShareS
     };
   }, [station, isPlaying]);
 
-  // Synchronize volume sliders
+  const effectiveVolume = isMuted ? 0 : volume;
+  const volumePercent = Math.round(effectiveVolume * 100);
+
+  // Synchronize volume sliders & persist preferred level
   useEffect(() => {
-    if (!audioRef.current) return;
-    audioRef.current.volume = isMuted ? 0 : volume;
-  }, [volume, isMuted]);
+    if (audioRef.current) {
+      audioRef.current.volume = effectiveVolume;
+      audioRef.current.muted = isMuted || volume === 0;
+    }
+    try {
+      localStorage.setItem(VOLUME_STORAGE_KEY, String(volume));
+    } catch {
+      // ignore storage errors
+    }
+  }, [volume, isMuted, effectiveVolume]);
 
   const setErrorState = () => {
     setLoading(false);
@@ -376,6 +401,16 @@ export default function AudioPlayer({ station, isPlaying, setIsPlaying, onShareS
 
   const toggleMute = () => {
     setIsMuted(!isMuted);
+  };
+
+  const handleVolumeChange = (nextVal: number) => {
+    const clamped = Math.max(0, Math.min(1, nextVal));
+    setVolume(clamped);
+    if (clamped > 0 && isMuted) {
+      setIsMuted(false);
+    } else if (clamped === 0) {
+      setIsMuted(true);
+    }
   };
 
   return (
@@ -402,8 +437,18 @@ export default function AudioPlayer({ station, isPlaying, setIsPlaying, onShareS
         ref={audioRef}
         crossOrigin="anonymous"
         onCanPlay={() => {
+          if (audioRef.current) {
+            audioRef.current.volume = effectiveVolume;
+            audioRef.current.muted = isMuted || volume === 0;
+          }
           setLoading(false);
           setStreamError(null);
+        }}
+        onPlay={() => {
+          if (audioRef.current) {
+            audioRef.current.volume = effectiveVolume;
+            audioRef.current.muted = isMuted || volume === 0;
+          }
         }}
         onWaiting={() => setLoading(true)}
         onError={() => {
@@ -585,32 +630,48 @@ export default function AudioPlayer({ station, isPlaying, setIsPlaying, onShareS
         )}
 
         {/* Volume Controllers */}
-        <div className="flex items-center gap-2 text-slate-500">
+        <div
+          className="flex items-center gap-2 bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/60 rounded-xl px-2.5 py-1.5 text-slate-600 dark:text-slate-300"
+          role="group"
+          aria-label="Audio playback volume controls"
+        >
           <button
+            type="button"
             onClick={toggleMute}
-            className="hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+            className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors cursor-pointer shrink-0"
             id="control_mute"
+            aria-label={isMuted || volume === 0 ? "Unmute audio" : "Mute audio"}
             title={isMuted || volume === 0 ? "Unmute audio" : "Mute audio"}
           >
             {isMuted || volume === 0 ? (
-              <VolumeX className="w-4 h-4" />
+              <VolumeX className="w-4 h-4 text-rose-500" />
+            ) : volume < 0.5 ? (
+              <Volume1 className="w-4 h-4 text-emerald-500" />
             ) : (
-              <Volume2 className="w-4 h-4" />
+              <Volume2 className="w-4 h-4 text-emerald-500" />
             )}
           </button>
           <input
+            id="control_volume_slider"
             type="range"
             min="0"
             max="1"
-            step="0.05"
-            value={isMuted ? 0 : volume}
-            onChange={(e) => {
-              setVolume(parseFloat(e.target.value));
-              setIsMuted(false);
-            }}
-            className="w-20 accent-emerald-500 h-1 bg-slate-200 dark:bg-slate-800 rounded-lg cursor-pointer"
-            title={`Volume: ${Math.round((isMuted ? 0 : volume) * 100)}%`}
+            step="0.01"
+            value={effectiveVolume}
+            onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+            aria-label="Stream volume"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={volumePercent}
+            className="w-24 sm:w-28 accent-emerald-500 h-1.5 bg-slate-300 dark:bg-slate-700 rounded-lg cursor-pointer"
+            title={`Volume: ${volumePercent}%`}
           />
+          <span
+            id="control_volume_percent"
+            className="text-[10px] font-mono font-bold text-slate-600 dark:text-slate-300 w-8 text-right tabular-nums shrink-0"
+          >
+            {isMuted || volume === 0 ? "0%" : `${volumePercent}%`}
+          </span>
         </div>
       </div>
 
